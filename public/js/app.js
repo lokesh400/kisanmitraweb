@@ -15,7 +15,6 @@ document.addEventListener("DOMContentLoaded", () => {
     initModeTabs();
     initDropzone();
     initCamera();
-    initSamples();
     initProtocolTabs();
     initActions();
     initChat();
@@ -260,38 +259,6 @@ function stopCameraStream() {
     }
     const video = document.getElementById("camera-video");
     if (video) video.style.display = "none";
-}
-
-/* ---------------- Preloaded Field Test Specimens ---------------- */
-function initSamples() {
-    const sampleChips = document.querySelectorAll(".sample-chip");
-    sampleChips.forEach(chip => {
-        chip.addEventListener("click", async () => {
-            const url = chip.getAttribute("data-sample-url");
-            if (!url) return;
-
-            // Auto-select crop pill
-            const cropPills = document.querySelectorAll(".crop-pill");
-            const cropSelect = document.getElementById("crop-select");
-
-            if (url.includes("potato")) {
-                cropPills.forEach(p => p.classList.toggle("active", p.getAttribute("data-crop") === "Potato"));
-                if (cropSelect) cropSelect.value = "Potato";
-            } else if (url.includes("tomato") || url.includes("early_blight") || url.includes("late_blight") || url.includes("bacterial_spot") || url.includes("powdery_mildew")) {
-                cropPills.forEach(p => p.classList.toggle("active", p.getAttribute("data-crop") === "Tomato"));
-                if (cropSelect) cropSelect.value = "Tomato";
-            }
-
-            try {
-                const response = await fetch(url);
-                const blob = await response.blob();
-                const file = new File([blob], url.split("/").pop(), { type: blob.type || "image/jpeg" });
-                handleFileSelected(file);
-            } catch (err) {
-                console.error("Error loading sample:", err);
-            }
-        });
-    });
 }
 
 /* ---------------- Protocol Tabs (5 Tabs) ---------------- */
