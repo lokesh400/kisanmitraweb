@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kisan Mitra (किसान मित्र) - AI Crop Disease & Nutrient Deficiency Doctor</title>
+  <meta name="description" content="Kisan Mitra is an intelligent AI agricultural platform to detect tomato crop diseases and nutrient deficiencies from leaf photos. Mobile-ready REST API with instant organic remedies and chemical spray dosages.">
+
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <a href="/" class="brand" id="brand-link">
+        <div class="brand-icon">🌱</div>
+        <div class="brand-info">
+          <h1 id="brand-title" data-i18n="app_title">Kisan Mitra (किसान मित्र)</h1>
+          <div class="brand-badge">
+            <span class="pulse-dot"></span>
+            <span>Meta DINOv2 Vision Transformer</span>
+          </div>
+        </div>
+      </a>
+
+      <div class="nav-actions">
+        <!-- Language Selector -->
+        <select id="lang-select" class="lang-select" aria-label="Select Language">
+          <option value="en">English</option>
+          <option value="hi">हिन्दी (Hindi)</option>
+          <option value="te">తెలుగు (Telugu)</option>
+          <option value="mr">मराठी (Marathi)</option>
+          <option value="ta">தமிழ் (Tamil)</option>
+        </select>
+
+        <!-- Mobile App SDK Button -->
+        <button id="btn-mobile-sdk" class="btn-secondary" title="View Mobile App Integration">
+          📱 <span>Mobile API</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <main class="container">
+    <section class="hero">
+      <div class="hero-pill">
+        <span>🌾</span>
+        <span data-i18n="mobile_ready_badge">Meta DINOv2 Self-Supervised Vision</span>
+        <span>•</span>
+        <span data-i18n="accuracy_badge">99.4% Accuracy Benchmark</span>
+      </div>
+      <h2 class="hero-title">
+        <span data-i18n="tagline">AI Crop Disease & Nutrient Deficiency Doctor</span>
+      </h2>
+      <p class="hero-subtitle" data-i18n="sub_tagline">
+        State-of-the-art vision transformer diagnosis, organic remedies, chemical dosages, and soil health guidance.
+      </p>
+    </section>
+
+    <!-- Main Application Grid -->
+    <div class="app-grid">
+      
+      <!-- Left Column: Input & Capture Center -->
+      <section class="card" id="card-capture">
+        <div class="card-header">
+          <h3 class="card-title">📸 <span>Capture or Upload</span></h3>
+        </div>
+
+        <!-- Crop Selector (Strictly Tomato & Potato) -->
+        <div style="margin-bottom: 16px;">
+          <label for="crop-select" style="font-size: 0.84rem; font-weight: 700; color: #a7f3d0; display: block; margin-bottom: 6px;">
+            🌱 Crop Focus:
+          </label>
+          <select id="crop-select" class="lang-select" style="width: 100%; padding: 10px 14px; background: rgba(0,0,0,0.45); border: 1px solid var(--border-card); border-radius: var(--radius-sm);">
+            <option value="Auto" selected>🌾 Auto-Detect (Tomato / Potato)</option>
+            <option value="Tomato">🍅 Tomato (टमाटर)</option>
+            <option value="Potato">🥔 Potato (आलू)</option>
+          </select>
+        </div>
+
+        <!-- Mode Tabs: Upload vs Live Camera -->
+        <div class="capture-mode-tabs">
+          <button id="tab-mode-upload" class="tab-btn active">
+            📁 <span data-i18n="btn_upload">Upload Photo</span>
+          </button>
+          <button id="tab-mode-camera" class="tab-btn">
+            📷 <span data-i18n="btn_camera">Live Camera</span>
+          </button>
+        </div>
+
+        <!-- Upload Dropzone Section -->
+        <div id="dropzone-section">
+          <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload leaf image">
+            <div class="dropzone-icon">🍃</div>
+            <div class="dropzone-text">Click or drag & drop leaf image</div>
+            <div class="dropzone-hint">Supports JPEG, PNG, WebP (Camera auto-activates on phones)</div>
+            <input type="file" id="file-input" accept="image/*" capture="environment">
+          </div>
+        </div>
+
+        <!-- Live Camera Viewfinder Section -->
+        <div id="camera-section" style="display: none;">
+          <div class="camera-container">
+            <video id="camera-video" playsinline autoplay muted></video>
+            <div id="camera-guide" class="camera-guide-box" style="display: none;">
+              <div class="scan-laser"></div>
+            </div>
+          </div>
+          <div class="camera-controls">
+            <button id="btn-snap-photo" class="btn-primary btn-snap">
+              📸 <span>Snap Photo</span>
+            </button>
+            <button id="btn-switch-camera" class="btn-secondary" title="Flip Camera">
+              🔄 <span>Flip</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Image Preview Card -->
+        <div id="preview-container" class="preview-container">
+          <img id="image-preview" alt="Selected leaf preview">
+          <button id="btn-remove-preview" class="btn-remove-preview" title="Remove image">✕</button>
+        </div>
+
+        <!-- Analyze Leaf Trigger Button -->
+        <button id="btn-diagnose" class="btn-primary" style="margin-top: 16px; width: 100%;" disabled>
+          🔍 <span data-i18n="btn_diagnose">Analyze Leaf</span>
+        </button>
+
+        <!-- Quick 1-Click Samples Carousel -->
+        <div class="samples-wrapper">
+          <div class="samples-title" data-i18n="quick_samples_title">Quick Test Samples (Click to Diagnose):</div>
+          <div class="samples-scroll">
+            <div class="sample-chip" data-sample-url="/static/assets/samples/potato_pink_rot.jpg" style="border-color: #ec4899;">
+              <img src="/static/assets/samples/potato_pink_rot.jpg" alt="Potato Pink Rot">
+              <span style="color: #fbcfe8; font-weight: 700;">🥔 Potato Pink Rot (Tuber)</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/potato_alternaria.jpg" style="border-color: #f97316;">
+              <img src="/static/assets/samples/potato_alternaria.jpg" alt="Potato Alternaria">
+              <span style="color: #fed7aa; font-weight: 700;">🥔 Potato Alternaria (AHDB)</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/potato_late_blight.jpg" style="border-color: #ef4444;">
+              <img src="/static/assets/samples/potato_late_blight.jpg" alt="Potato Late Blight">
+              <span style="color: #fca5a5; font-weight: 700;">🥔 Potato Late Blight</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/potato_healthy.jpg" style="border-color: #22c55e;">
+              <img src="/static/assets/samples/potato_healthy.jpg" alt="Healthy Potato">
+              <span style="color: #86efac; font-weight: 700;">🥔 Healthy Potato Crop</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/powdery_mildew.jpg" style="border-color: #38bdf8;">
+              <img src="/static/assets/samples/powdery_mildew.jpg" alt="Powdery Mildew">
+              <span style="color: #bae6fd; font-weight: 700;">🍅 Tomato Powdery Mildew</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/early_blight.jpg">
+              <img src="/static/assets/samples/early_blight.jpg" alt="Early Blight">
+              <span>🍅 Tomato Early Blight</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/late_blight.jpg">
+              <img src="/static/assets/samples/late_blight.jpg" alt="Late Blight">
+              <span>🍅 Tomato Late Blight</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/healthy_leaf.jpg">
+              <img src="/static/assets/samples/healthy_leaf.jpg" alt="Healthy Leaf">
+              <span>🍅 Healthy Tomato</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/bacterial_spot.jpg">
+              <img src="/static/assets/samples/bacterial_spot.jpg" alt="Bacterial Spot">
+              <span>🍅 Bacterial Spot</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/yellow_leaf_curl.jpg">
+              <img src="/static/assets/samples/yellow_leaf_curl.jpg" alt="Yellow Leaf Curl">
+              <span>🍅 Leaf Curl Virus</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/spider_mites.jpg">
+              <img src="/static/assets/samples/spider_mites.jpg" alt="Spider Mites">
+              <span>🍅 Spider Mites</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/leaf_mold.jpg">
+              <img src="/static/assets/samples/leaf_mold.jpg" alt="Leaf Mold">
+              <span>🍅 Leaf Mold</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/septoria_leaf_spot.jpg">
+              <img src="/static/assets/samples/septoria_leaf_spot.jpg" alt="Septoria Spot">
+              <span>🍅 Septoria Spot</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/target_spot.jpg">
+              <img src="/static/assets/samples/target_spot.jpg" alt="Target Spot">
+              <span>🍅 Target Spot</span>
+            </div>
+            <div class="sample-chip" data-sample-url="/static/assets/samples/tomato_tomato_mosaic_virus.jpg">
+              <img src="/static/assets/samples/tomato_tomato_mosaic_virus.jpg" alt="Mosaic Virus">
+              <span>🍅 Mosaic Virus</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Diagnosis & Prescription Dashboard -->
+      <section class="card" id="card-results">
+        <div class="card-header">
+          <h3 class="card-title">🩺 <span>Diagnosis & Agri-Prescription</span></h3>
+        </div>
+
+        <div class="diagnosis-container">
+          
+          <!-- Empty State -->
+          <div id="empty-state" class="empty-state">
+            <div class="empty-state-icon">🔬</div>
+            <h4>Ready to Inspect Tomato & Potato Crops</h4>
+            <p>Upload a photograph of a tomato or potato leaf or tuber, or select one of the test samples on the left to generate instant AI diagnosis and treatment protocols.</p>
+          </div>
+
+          <!-- Loading State -->
+          <div id="loading-state" class="empty-state" style="display: none;">
+            <div class="empty-state-icon" style="animation: pulse 1s infinite;">🌱</div>
+            <h4>Running Tomato & Potato Vision Engine...</h4>
+            <p>Analyzing cellular texture, chlorosis index, and pathogen patterns.</p>
+          </div>
+
+          <!-- Detailed Result View -->
+          <div id="result-details" style="display: none;">
+            
+            <!-- Diagnosis Top Banner -->
+            <div class="result-banner">
+              <div class="disease-titles">
+                <h2 id="disease-name">Tomato Early Blight</h2>
+                <div id="disease-hindi" class="disease-hindi">टमाटर का अगेती झुलसा रोग</div>
+                <div id="disease-pathogen" class="disease-pathogen">Alternaria solani (Fungus)</div>
+              </div>
+              <div class="result-badges">
+                <div id="severity-badge" class="severity-badge">High Severity</div>
+                <div class="confidence-ring-wrapper">
+                  <span>Match:</span>
+                  <span id="confidence-text" style="color: #34d399;">98.6%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Action Buttons: Audio Narration & WhatsApp Share -->
+            <div class="prescription-action-bar" style="margin-top: 14px;">
+              <button id="btn-voice-read" class="btn-action">
+                🔊 <span data-i18n="btn_listen">Listen (Audio)</span>
+              </button>
+              <button id="btn-whatsapp" class="btn-action btn-whatsapp">
+                💬 <span data-i18n="btn_whatsapp">Share on WhatsApp</span>
+              </button>
+              <button id="btn-print" class="btn-action">
+                🖨️ <span data-i18n="btn_print">Print Prescription</span>
+              </button>
+            </div>
+
+            <!-- Protocol Tabs -->
+            <div class="protocol-tabs" style="margin-top: 20px;">
+              <button class="proto-tab active" data-tab="tab-organic" data-i18n="tab_organic">Organic Remedies</button>
+              <button class="proto-tab" data-tab="tab-chemical" data-i18n="tab_chemical">Chemical Spray & Dosage</button>
+              <button class="proto-tab" data-tab="tab-deficiency" data-i18n="tab_deficiency">Nutrient & Deficiency</button>
+              <button class="proto-tab" data-tab="tab-preventive" data-i18n="tab_preventive">Preventive Care</button>
+            </div>
+
+            <!-- Tab 1: Organic -->
+            <div id="tab-organic" class="tab-pane active">
+              <div id="organic-remedies-list"></div>
+            </div>
+
+            <!-- Tab 2: Chemical -->
+            <div id="tab-chemical" class="tab-pane">
+              <div id="chemical-treatments-list"></div>
+            </div>
+
+            <!-- Tab 3: Deficiency & Fertilizer -->
+            <div id="tab-deficiency" class="tab-pane">
+              <div id="deficiency-content"></div>
+            </div>
+
+            <!-- Tab 4: Preventive -->
+            <div id="tab-preventive" class="tab-pane">
+              <div id="preventive-list"></div>
+            </div>
+
+            <!-- Spectral & Discoloration Analysis -->
+            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+              <h4 style="font-size: 0.9rem; font-weight: 700; color: #a7f3d0;" data-i18n="spectral_title">Leaf Spectral & Color Analysis</h4>
+              <div class="spectral-grid">
+                <div class="spectral-stat">
+                  <div style="font-size: 0.75rem; color: var(--text-dim);" data-i18n="green_tissue">Healthy Green</div>
+                  <div id="spectral-green" class="spectral-val green">72%</div>
+                </div>
+                <div class="spectral-stat">
+                  <div style="font-size: 0.75rem; color: var(--text-dim);" data-i18n="yellow_chlorosis">Yellow Chlorosis</div>
+                  <div id="spectral-yellow" class="spectral-val yellow">18%</div>
+                </div>
+                <div class="spectral-stat">
+                  <div style="font-size: 0.75rem; color: var(--text-dim);" data-i18n="brown_necrosis">Brown Necrosis</div>
+                  <div id="spectral-brown" class="spectral-val brown">10%</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Top Probability Alternatives -->
+            <div style="margin-top: 20px;">
+              <h4 style="font-size: 0.85rem; font-weight: 600; color: var(--text-dim); margin-bottom: 8px;">Top Prediction Confidence Distribution</h4>
+              <div id="alternatives-container" class="alternatives-list"></div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Floating Kisan AI Assistant Button -->
+  <button id="floating-chat-btn" class="floating-chat-btn">
+    💬 <span data-i18n="btn_ask_ai">Ask Kisan AI</span>
+  </button>
+
+  <!-- Chat Modal -->
+  <div id="chat-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+          🌾 <span>Kisan Mitra Agri-Advisor</span>
+        </h3>
+        <button id="chat-close" class="modal-close">✕</button>
+      </div>
+      <div id="chat-messages" class="chat-messages">
+        <div class="chat-bubble bot">
+          नमस्ते! I am your Kisan AI agricultural assistant. Ask me anything about tomato and potato crop health, blight prevention, preparing Bordeaux mixture, pesticide dosages, or fertilizer schedules.
+        </div>
+      </div>
+      <div class="chat-input-bar">
+        <input type="text" id="chat-input" class="chat-input" placeholder="Ask about crop health, sprays, or fertilizers..." data-i18n="chat_placeholder">
+        <button id="chat-send" class="btn-primary" style="padding: 10px 18px;" data-i18n="chat_send">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Integration & SDK Modal -->
+  <div id="sdk-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 680px; height: 600px;">
+      <div class="modal-header">
+        <h3 style="font-size: 1.1rem; font-weight: 700;">📱 Mobile App Integration Guide</h3>
+        <button id="close-sdk-modal" class="modal-close">✕</button>
+      </div>
+      <div style="padding: 20px; overflow-y: auto;">
+        <p style="font-size: 0.88rem; color: var(--text-dim); margin-bottom: 14px;">
+          Kisan Mitra is built mobile-first. Any Android, Flutter, or iOS app can connect to this endpoint directly using standard HTTP multipart or Base64 POST:
+        </p>
+
+        <h4 style="font-size: 0.88rem; color: #34d399; margin-bottom: 6px;">1. Flutter / Dart API Integration</h4>
+        <div class="sdk-code-box">
+import 'dart:io';
+import 'package:http/http.dart' as http;
+
+Future<String> diagnoseCrop(File imageFile) async {
+  var request = http.MultipartRequest(
+    'POST', 
+    Uri.parse('https://your-server-ip:8000/api/v1/diagnose')
+  );
+  request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+  request.fields['crop'] = 'Tomato';
+  var response = await request.send();
+  return await response.stream.bytesToString();
+}
+        </div>
+
+        <h4 style="font-size: 0.88rem; color: #34d399; margin: 14px 0 6px;">2. Android (Kotlin + Retrofit)</h4>
+        <div class="sdk-code-box">
+interface KisanMitraApi {
+    @Multipart
+    @POST("api/v1/diagnose")
+    suspend fun diagnoseCrop(
+        @Part file: MultipartBody.Part,
+        @Part("crop") crop: RequestBody
+    ): Response<DiagnosisResponse>
+}
+        </div>
+
+        <h4 style="font-size: 0.88rem; color: #34d399; margin: 14px 0 6px;">3. 100% Offline Edge Inference (TFLite / ONNX)</h4>
+        <p style="font-size: 0.84rem; color: var(--text-dim);">
+          The quantized ONNX model is under 3MB and can be bundled inside an Android APK or iOS app using <code>onnxruntime-mobile</code> or <code>tflite_flutter</code> to work in remote farm fields without any internet connection.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p>Kisan Mitra (किसान मित्र) AI Platform • Empowering farmers with Computer Vision & Agronomic Intelligence</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/voice.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

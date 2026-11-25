@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title || "Kisan Mitra (किसान मित्र) - AI Crop Disease & Nutrient Deficiency Doctor" %></title>
+  <meta name="description" content="<%= metaDescription || 'Kisan Mitra is an intelligent AI agricultural platform to detect tomato and potato crop diseases and nutrient deficiencies from photos.' %>">
+
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="light-theme">
+
+  <!-- Navigation Bar -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <a href="/" class="brand" id="brand-link">
+        <div class="brand-icon">🌱</div>
+        <div class="brand-info">
+          <div class="brand-title-wrap">
+            <h1 id="brand-title" class="brand-name" data-i18n="app_title">Kisan Mitra</h1>
+            <span class="brand-tag">किसान मित्र</span>
+          </div>
+          <div class="brand-badge">
+            <span class="pulse-dot"></span>
+            <span data-i18n="trust_badge">ICAR Pathology & Meta DINOv2 AI</span>
+          </div>
+        </div>
+      </a>
+
+      <div class="nav-actions">
+        <!-- 2-Language Segmented Switch (English / Hindi only) -->
+        <div class="lang-switch" role="group" aria-label="Select Language">
+          <button id="lang-btn-en" class="lang-btn active" type="button" aria-pressed="true">
+            <span>🇺🇸</span> <span>English</span>
+          </button>
+          <button id="lang-btn-hi" class="lang-btn" type="button" aria-pressed="false">
+            <span>🇮🇳</span> <span>हिन्दी</span>
+          </button>
+        </div>
+
+        <!-- Chat Helpline Button -->
+        <button id="btn-nav-chat" class="btn-nav-chat" title="Open Kisan Helpline">
+          💬 <span data-i18n="btn_chat_nav">Kisan Helpline Chat</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <main class="container">
+    <section class="hero">
+      <div class="hero-badges">
+        <span class="hero-pill primary">
+          <span>🌿</span>
+          <span data-i18n="conditions_count_badge">43 Solanaceous Conditions Supported</span>
+        </span>
+        <span class="hero-pill accent">
+          <span>🎯</span>
+          <span data-i18n="accuracy_badge">99.4% Accuracy Benchmark</span>
+        </span>
+        <span class="hero-pill doctor">
+          <span>🔬</span>
+          <span>Tomato & Potato Doctor</span>
+        </span>
+      </div>
+
+      <h2 class="hero-title">
+        <span data-i18n="tagline">PhD-Grade Plant Pathology & AI Crop Doctor</span>
+      </h2>
+      <p class="hero-subtitle" data-i18n="sub_tagline">
+        Instant vision transformer diagnosis, epidemiology, 15L knapsack sprayer recipes, and organic remedies for Tomato and Potato farmers.
+      </p>
+    </section>
+
+    <!-- Main Application Grid -->
+    <div class="app-grid">
+      
+      <!-- Left Column: Step 1 - Input & Capture Center -->
+      <section class="card card-capture" id="card-capture">
+        <div class="card-header">
+          <div class="step-indicator">
+            <span class="step-num">1</span>
+            <div>
+              <h3 class="card-title" data-i18n="step_1_title">1. Select Crop & Upload Leaf Photo</h3>
+              <p class="card-subtitle" data-i18n="step_1_desc">Snap a photo of the affected leaf, stem, or tuber in natural daylight.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- Crop Selector (Tomato & Potato Focus) -->
+          <div class="crop-select-group">
+            <label for="crop-select" class="field-label" data-i18n="crop_focus_label">
+              🌱 Crop Focus:
+            </label>
+            <div class="crop-pill-group">
+              <button type="button" class="crop-pill active" data-crop="Auto">
+                <span data-i18n="crop_auto">🌾 Auto-Detect (Tomato / Potato)</span>
+              </button>
+              <button type="button" class="crop-pill" data-crop="Tomato">
+                <span data-i18n="crop_tomato">🍅 Tomato (टमाटर)</span>
+              </button>
+              <button type="button" class="crop-pill" data-crop="Potato">
+                <span data-i18n="crop_potato">🥔 Potato (आलू)</span>
+              </button>
+            </div>
+            <!-- Hidden select for compatibility -->
+            <select id="crop-select" style="display: none;">
+              <option value="Auto" selected>Auto</option>
+              <option value="Tomato">Tomato</option>
+              <option value="Potato">Potato</option>
+            </select>
+          </div>
+
+          <!-- Capture Mode Tabs: Upload vs Live Camera -->
+          <div class="capture-mode-tabs">
+            <button id="tab-mode-upload" class="tab-btn active" type="button">
+              📁 <span data-i18n="btn_upload_mode">Upload Photo</span>
+            </button>
+            <button id="tab-mode-camera" class="tab-btn" type="button">
+              📷 <span data-i18n="btn_camera_mode">Live Camera</span>
+            </button>
+          </div>
+
+          <!-- Upload Dropzone Section -->
+          <div id="dropzone-section">
+            <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload leaf image">
+              <div class="dropzone-icon">🍃</div>
+              <div class="dropzone-text" data-i18n="dropzone_text">Click or drag & drop leaf or tuber photo</div>
+              <div class="dropzone-hint" data-i18n="dropzone_hint">Supports high-resolution JPG, PNG, WebP (Camera auto-activates on phones)</div>
+              <input type="file" id="file-input" accept="image/*" capture="environment">
+            </div>
+          </div>
+
+          <!-- Live Camera Viewfinder Section -->
+          <div id="camera-section" style="display: none;">
+            <div class="camera-container">
+              <video id="camera-video" playsinline autoplay muted></video>
+              <div id="camera-guide" class="camera-guide-box" style="display: none;">
+                <div class="scan-laser"></div>
+              </div>
+            </div>
+            <div class="camera-controls">
+              <button id="btn-snap-photo" class="btn-primary btn-snap" type="button">
+                📸 <span data-i18n="btn_snap">Take Photo</span>
+              </button>
+              <button id="btn-switch-camera" class="btn-secondary" type="button" title="Flip Camera">
+                🔄 <span data-i18n="btn_flip">Flip</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Image Preview Card -->
+          <div id="preview-container" class="preview-container">
+            <img id="image-preview" alt="Selected leaf preview">
+            <button id="btn-remove-preview" class="btn-remove-preview" title="Remove image">
+              ✕ <span data-i18n="btn_remove_preview">Change Photo</span>
+            </button>
+          </div>
+
+          <!-- Analyze Leaf Trigger Button -->
+          <button id="btn-diagnose" class="btn-primary btn-diagnose-main" disabled type="button">
+            🔍 <span data-i18n="btn_diagnose">Diagnose Crop Health</span>
+          </button>
+
+          <!-- Quick Field Test Specimens -->
+          <div class="samples-wrapper">
+            <div class="samples-title" data-i18n="quick_samples_title">Field Test Specimens (Click any to run diagnosis):</div>
+            <div class="samples-scroll">
+              <% if (samples && samples.length > 0) { %>
+                <% samples.forEach(function(sample) { %>
+                  <div class="sample-chip" data-sample-url="<%= sample.url %>">
+                    <img src="<%= sample.url %>" alt="<%= sample.name %>">
+                    <span class="sample-chip-label"><%= sample.label %></span>
+                  </div>
+                <% }); %>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Step 2 - Diagnosis & PhD Prescription Dashboard -->
+      <section class="card card-results" id="card-results">
+        <div class="card-header">
+          <div class="step-indicator">
+            <span class="step-num step-num-green">2</span>
+            <div>
+              <h3 class="card-title" data-i18n="step_2_title">2. Expert Diagnosis & Prescription</h3>
+              <p class="card-subtitle" data-i18n="step_2_desc">Scientific diagnosis with instant organic and knapsack chemical treatment.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="diagnosis-container">
+            
+            <!-- Empty State -->
+            <div id="empty-state" class="empty-state">
+              <div class="empty-state-icon">🔬</div>
+              <h4 data-i18n="empty_title">Ready to Inspect Tomato & Potato Crops</h4>
+              <p data-i18n="empty_desc">Upload a photo of your tomato or potato leaf, fruit, or tuber — or click one of the field test specimens on the left — to receive an instant PhD-level pathology report and sprayer recipe.</p>
+              <div class="field-guide-tip">
+                💡 <strong>Farmer Tip:</strong> Keep the leaf centered and avoid strong shadows for the highest diagnosis accuracy.
+              </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading-state" class="empty-state" style="display: none;">
+              <div class="empty-state-icon pulse-animation">🌱</div>
+              <h4 data-i18n="loading_title">Running Deep Vision Pathology Scan...</h4>
+              <p data-i18n="loading_desc">Analyzing cellular necrosis, chlorosis spectrum, fungal spore structures, and tissue lesions.</p>
+            </div>
+
+            <!-- Detailed Result View -->
+            <div id="result-details" style="display: none;">
+              
+              <!-- Diagnosis Top Banner -->
+              <div class="result-banner">
+                <div class="disease-titles">
+                  <div class="disease-crop-badge" id="disease-crop-badge">TOMATO</div>
+                  <h2 id="disease-name">Tomato Early Blight</h2>
+                  <div id="disease-hindi" class="disease-hindi">टमाटर का अगेती झुलसा रोग</div>
+                  <div id="disease-pathogen" class="disease-pathogen">Alternaria solani (Fungus)</div>
+                </div>
+                <div class="result-badges">
+                  <div id="severity-badge" class="severity-badge">High Severity</div>
+                  <div class="confidence-box">
+                    <span class="confidence-label" data-i18n="match_confidence">Match Accuracy</span>
+                    <span id="confidence-text" class="confidence-value">98.6%</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action Bar: Audio Narration, WhatsApp & Print -->
+              <div class="prescription-action-bar">
+                <button id="btn-voice-read" class="btn-action btn-voice" type="button">
+                  🔊 <span data-i18n="btn_listen">Listen (Audio)</span>
+                </button>
+                <button id="btn-whatsapp" class="btn-action btn-whatsapp" type="button">
+                  💬 <span data-i18n="btn_whatsapp">Share on WhatsApp</span>
+                </button>
+                <button id="btn-print" class="btn-action btn-print" type="button">
+                  🖨️ <span data-i18n="btn_print">Print Prescription</span>
+                </button>
+              </div>
+
+              <!-- 5 Comprehensive Treatment & PhD Pathology Tabs -->
+              <div class="protocol-tabs">
+                <button class="proto-tab active" data-tab="tab-organic" type="button" data-i18n="tab_organic">
+                  🌿 Organic & Biocontrol
+                </button>
+                <button class="proto-tab" data-tab="tab-chemical" type="button" data-i18n="tab_chemical">
+                  🧪 Chemical & Sprayer Recipes
+                </button>
+                <button class="proto-tab" data-tab="tab-phd" type="button" data-i18n="tab_phd">
+                  🔬 PhD Pathology & Differential Key
+                </button>
+                <button class="proto-tab" data-tab="tab-deficiency" type="button" data-i18n="tab_deficiency">
+                  🍂 Nutrient & Soil Health
+                </button>
+                <button class="proto-tab" data-tab="tab-preventive" type="button" data-i18n="tab_preventive">
+                  🛡️ Preventive Protocols
+                </button>
+              </div>
+
+              <!-- Tab 1: Organic & Biocontrol -->
+              <div id="tab-organic" class="tab-pane active">
+                <div class="tab-section-header">
+                  <h4 data-i18n="organic_header">Organic & Biological Controls (IPM Standard)</h4>
+                </div>
+                <div id="organic-remedies-list" class="remedies-grid"></div>
+              </div>
+
+              <!-- Tab 2: Chemical & Sprayer Knapsack Recipes -->
+              <div id="tab-chemical" class="tab-pane">
+                <!-- Highlighted 15L Knapsack Pump Recipe Box -->
+                <div class="knapsack-highlight-box">
+                  <div class="knapsack-box-header">
+                    <span class="knapsack-icon">⚡</span>
+                    <strong data-i18n="knapsack_box_title">Standard 15-Liter Knapsack Sprayer Pump Recipe</strong>
+                  </div>
+                  <p id="knapsack-recipe-text" class="knapsack-recipe-body">
+                    Measure 35-40g Mancozeb 75% WP into 2 Liters water to form a smooth slurry. Pour into 15L sprayer tank, fill to brim with water, and add 10ml wetting sticker. Spray during early morning hours.
+                  </p>
+                </div>
+
+                <div class="tab-section-header" style="margin-top: 16px;">
+                  <h4 data-i18n="chemical_header">Precision Chemical Sprays & Spray Tank Ratios</h4>
+                </div>
+                <div id="chemical-treatments-list" class="remedies-grid"></div>
+              </div>
+
+              <!-- Tab 3: PhD Pathology & Differential Key -->
+              <div id="tab-phd" class="tab-pane">
+                <div class="phd-pathology-panel">
+                  
+                  <div class="phd-section-card">
+                    <div class="phd-section-title">
+                      <span>🏷️</span> <span data-i18n="phd_taxonomy_title">Taxonomic Classification & Etiology</span>
+                    </div>
+                    <p id="phd-taxonomy-text" class="phd-section-text">
+                      Ascomycota — Dothideomycetes — Pleosporales — Alternaria solani Sorauer. Produces alternariol toxins causing cellular collapse.
+                    </p>
+                  </div>
+
+                  <div class="phd-section-card">
+                    <div class="phd-section-title">
+                      <span>🌦️</span> <span data-i18n="phd_epidemiology_title">Epidemiological Triggers & Disease Cycle</span>
+                    </div>
+                    <p id="phd-epidemiology-text" class="phd-section-text">
+                      Optimal 24-29°C with high relative humidity (>80%) and prolonged dew periods. Spores overwinter in infected plant debris.
+                    </p>
+                  </div>
+
+                  <div class="phd-section-card differential-card">
+                    <div class="phd-section-title">
+                      <span>🔍</span> <span data-i18n="phd_differential_title">Differential Diagnosis & Lookalike Identification</span>
+                    </div>
+                    <p id="phd-differential-text" class="phd-section-text">
+                      Concentric target-board rings restricted by major veins, distinguished from Septoria leaf spots by lesion size and lack of central pycnidia.
+                    </p>
+                  </div>
+
+                  <div class="phd-section-card icar-card">
+                    <div class="phd-section-title">
+                      <span>🏛️</span> <span data-i18n="phd_icar_title">ICAR & Agricultural University Guidelines</span>
+                    </div>
+                    <p id="phd-icar-text" class="phd-section-text">
+                      Follow 3-year crop rotation with non-solanaceous crops (maize, pulses), destroy crop residue post-harvest, and initiate preventive fungicide spray at first sign of lower canopy spotting.
+                    </p>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- Tab 4: Deficiency & Soil Health -->
+              <div id="tab-deficiency" class="tab-pane">
+                <div id="deficiency-content" class="remedies-grid"></div>
+              </div>
+
+              <!-- Tab 5: Preventive Protocols -->
+              <div id="tab-preventive" class="tab-pane">
+                <div id="preventive-list" class="remedies-grid"></div>
+              </div>
+
+              <!-- Spectral & Discoloration Analysis Card -->
+              <div class="spectral-analysis-card">
+                <h4 class="spectral-title" data-i18n="spectral_title">Foliar Color & Tissue Breakdown</h4>
+                <div class="spectral-bar-wrapper">
+                  <div class="spectral-stacked-bar">
+                    <div id="spectral-bar-green" class="bar-segment green" style="width: 70%;"></div>
+                    <div id="spectral-bar-yellow" class="bar-segment yellow" style="width: 20%;"></div>
+                    <div id="spectral-bar-brown" class="bar-segment brown" style="width: 10%;"></div>
+                  </div>
+                </div>
+                <div class="spectral-grid">
+                  <div class="spectral-stat green-stat">
+                    <span class="stat-dot green-dot"></span>
+                    <div>
+                      <div class="stat-label" data-i18n="green_tissue">Healthy Green Tissue</div>
+                      <div id="spectral-green" class="stat-value">70%</div>
+                    </div>
+                  </div>
+                  <div class="spectral-stat yellow-stat">
+                    <span class="stat-dot yellow-dot"></span>
+                    <div>
+                      <div class="stat-label" data-i18n="yellow_chlorosis">Yellow Chlorosis</div>
+                      <div id="spectral-yellow" class="stat-value">20%</div>
+                    </div>
+                  </div>
+                  <div class="spectral-stat brown-stat">
+                    <span class="stat-dot brown-dot"></span>
+                    <div>
+                      <div class="stat-label" data-i18n="brown_necrosis">Brown Necrotic Spots</div>
+                      <div id="spectral-brown" class="stat-value">10%</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Top Probability Alternatives Distribution -->
+              <div class="alternatives-box">
+                <h4 class="alt-title" data-i18n="alt_distribution_title">Differential Diagnostic Confidence Distribution</h4>
+                <div id="alternatives-container" class="alternatives-list"></div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Floating Kisan AI Assistant Button -->
+  <button id="floating-chat-btn" class="floating-chat-btn" type="button" aria-label="Open AI Assistant">
+    <span class="chat-btn-icon">🌾</span>
+    <span class="chat-btn-text" data-i18n="btn_ask_ai">Ask Kisan AI Advisor</span>
+  </button>
+
+  <!-- Kisan AI Chat Modal -->
+  <div id="chat-modal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal-content chat-modal-content">
+      <div class="modal-header">
+        <div class="chat-header-info">
+          <div class="chat-header-icon">👨‍🌾</div>
+          <div>
+            <h3 class="modal-title" data-i18n="chat_modal_title">Kisan Mitra Agri-Advisor</h3>
+            <span class="chat-status-pill">● Online • 24/7 Krishi Expert</span>
+          </div>
+        </div>
+        <button id="chat-close" class="modal-close" type="button" aria-label="Close Chat">✕</button>
+      </div>
+
+      <!-- Quick Question Prompt Pills -->
+      <div class="chat-quick-prompts">
+        <button class="quick-prompt-chip" data-prompt="How to prepare 1% Bordeaux mixture?" data-i18n="chat_quick_1">
+          How to prepare 1% Bordeaux mixture?
+        </button>
+        <button class="quick-prompt-chip" data-prompt="What is the difference between Early Blight and Late Blight?" data-i18n="chat_quick_2">
+          Early vs Late Blight difference?
+        </button>
+        <button class="quick-prompt-chip" data-prompt="What is the knapsack sprayer dosage for Mancozeb 75 WP?" data-i18n="chat_quick_4">
+          15L pump dosage for Mancozeb?
+        </button>
+        <button class="quick-prompt-chip" data-prompt="Organic spray for tomato whitefly and leaf curl?" data-i18n="chat_quick_3">
+          Whitefly organic spray?
+        </button>
+      </div>
+
+      <div id="chat-messages" class="chat-messages">
+        <div class="chat-bubble bot">
+          <span data-i18n="chat_welcome">
+            Namaste! I am your Kisan AI Agricultural Advisor. How can I help your tomato or potato crop today? You can ask about spray dosages, 1% Bordeaux mixture preparation, late blight prevention, or soil fertilizers.
+          </span>
+        </div>
+      </div>
+
+      <div class="chat-input-bar">
+        <input type="text" id="chat-input" class="chat-input" placeholder="Type your farming question (e.g., dosage for early blight, Bordeaux mixture recipe)..." data-i18n="chat_placeholder">
+        <button id="chat-send" class="btn-primary btn-chat-send" type="button" data-i18n="chat_send">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-content">
+      <div class="footer-left">
+        <strong>Kisan Mitra (किसान मित्र)</strong> • <span data-i18n="footer_text">Empowering farmers with Computer Vision & Agronomic Intelligence</span>
+      </div>
+      <div class="footer-right">
+        <span>Tomato & Potato Pathology Standard</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/voice.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

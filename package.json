@@ -1,0 +1,31 @@
+{
+  "name": "kisan-mitra",
+  "version": "1.0.0",
+  "description": "> **Dedicated Tomato & Potato Crop Disease & Nutrient Deficiency Identification Doctor**   > Powered by Meta DINOv2 Vision Transformer + Fine-Tuned Solanaceous AI Head. Exclusively focused on Tomato and Potato crops.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test_node.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lokesh400/kisanmitraweb.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/lokesh400/kisanmitraweb/issues"
+  },
+  "homepage": "https://github.com/lokesh400/kisanmitraweb#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "ejs": "^7.0.2",
+    "express": "^5.3.0",
+    "multer": "^2.5.0",
+    "onnxruntime-node": "^1.31.1",
+    "sharp": "^0.35.5"
+  }
+}
