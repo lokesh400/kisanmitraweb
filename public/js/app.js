@@ -15,6 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initModeTabs();
     initDropzone();
     initCamera();
+    initQuickSamples();
     initProtocolTabs();
     initActions();
     initChat();
@@ -22,7 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 /* ---------------- Crop Focus Setup (Pill Group) ---------------- */
 function initCropSelect() {
-    const cropPills = document.querySelectorAll(".crop-pill");
+    const cropPills = document.querySelectorAll(".crop-btn, .crop-pill");
     const cropSelect = document.getElementById("crop-select");
 
     cropPills.forEach(pill => {
@@ -261,13 +262,45 @@ function stopCameraStream() {
     if (video) video.style.display = "none";
 }
 
+/* ---------------- Quick Reference Samples ---------------- */
+function initQuickSamples() {
+    const samplePills = document.querySelectorAll(".sample-pill, .sample-chip");
+    samplePills.forEach(pill => {
+        pill.addEventListener("click", async () => {
+            const url = pill.getAttribute("data-sample-url");
+            if (!url) return;
+
+            // Auto-select crop
+            const cropButtons = document.querySelectorAll(".crop-btn, .crop-pill");
+            const cropSelect = document.getElementById("crop-select");
+
+            if (url.includes("potato")) {
+                cropButtons.forEach(b => b.classList.toggle("active", b.getAttribute("data-crop") === "Potato"));
+                if (cropSelect) cropSelect.value = "Potato";
+            } else if (url.includes("tomato") || url.includes("early_blight") || url.includes("late_blight") || url.includes("bacterial_spot") || url.includes("powdery_mildew")) {
+                cropButtons.forEach(b => b.classList.toggle("active", b.getAttribute("data-crop") === "Tomato"));
+                if (cropSelect) cropSelect.value = "Tomato";
+            }
+
+            try {
+                const response = await fetch(url);
+                const blob = await response.blob();
+                const file = new File([blob], url.split("/").pop(), { type: blob.type || "image/jpeg" });
+                handleFileSelected(file);
+            } catch (err) {
+                console.error("Error loading sample:", err);
+            }
+        });
+    });
+}
+
 /* ---------------- Protocol Tabs (5 Tabs) ---------------- */
 function initProtocolTabs() {
     const tabs = document.querySelectorAll(".proto-tab");
     tabs.forEach(tab => {
         tab.addEventListener("click", () => {
             tabs.forEach(t => t.classList.remove("active"));
-            document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+            document.querySelectorAll(".tab-pane, .tab-content").forEach(p => p.classList.remove("active"));
 
             tab.classList.add("active");
             const targetId = tab.getAttribute("data-tab");
