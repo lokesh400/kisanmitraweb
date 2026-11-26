@@ -25,9 +25,9 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Static Assets
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/static', express.static(path.join(__dirname, 'public')));
+// Static Assets (index: false ensures GET / always renders views/index.ejs)
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+app.use('/static', express.static(path.join(__dirname, 'public'), { index: false }));
 
 // Multer memory storage for image uploads
 const upload = multer({
@@ -157,25 +157,35 @@ app.post('/api/v1/diagnose/base64', async (req, res) => {
 });
 
 /**
- * Interactive Kisan Agri-Advisor Chat API
+ * Interactive Kisan Agri-Advisor Chat API (Bilingual English / Hindi)
  */
 app.post('/api/v1/chat', (req, res) => {
   const msg = (req.body.message || '').toLowerCase().trim();
   const ctx = (req.body.disease_context || '').toLowerCase();
-  const lang = req.body.language || 'en';
+  const lang = req.body.language === 'hi' ? 'hi' : 'en';
 
   let reply = '';
 
-  if (msg.includes('bordeaux')) {
-    reply = 'To prepare 1% Bordeaux Mixture: Dissolve 1 kg Copper Sulphate (Neela Thotha) in 50L water in an earthen or plastic vessel. In another vessel, slake 1 kg Quicklime (Chuna) in 50L water. Slowly pour the copper sulphate solution into the lime suspension while stirring continuously. Test with a clean knife blade; if copper deposits on the blade, add more lime until neutral.';
-  } else if (msg.includes('alternaria') || msg.includes('early blight') || msg.includes('late blight') || msg.includes('झुलसा')) {
-    reply = 'Early Blight (Alternaria) forms concentric target rings starting on older leaves (spray Amistar Top @ 1ml/L or Mancozeb @ 2.5g/L). Late Blight (Phytophthora) produces water-soaked greasy patches with white spore fuzz on leaf undersides in foggy weather (immediately spray Curzate @ 2.5g/L or Ridomil Gold @ 2.5g/L).';
-  } else if (msg.includes('neem') || msg.includes('organic') || msg.includes('जैविक')) {
-    reply = 'Organic Crop Shield: Mix 5ml cold-pressed Neem Oil (10,000 ppm) with 1ml liquid soap in 1 Liter warm water. Add 5g Trichoderma viride or Pseudomonas fluorescens. Spray during early morning or evening hours.';
-  } else if (msg.includes('dosage') || msg.includes('spray')) {
-    reply = 'Standard Knapsack Sprayer (15L Pump): Mancozeb 75 WP (40g), Amistar Top (15ml), Ridomil Gold (35g), Neem Oil (50ml), Streptocycline (1.5g). Always wear mask and gloves while spraying.';
+  if (msg.includes('bordeaux') || msg.includes('बोर्डो')) {
+    reply = lang === 'hi'
+      ? '1% बोर्डो मिश्रण बनाने की विधि: एक प्लास्टिक या मिट्टी के बर्तन में 50 लीटर पानी में 1 किलोग्राम नीला थोथा (कॉपर सल्फेट) घोलें। दूसरे बर्तन में 50 लीटर पानी में 1 किलोग्राम बिना बुझा चूना मिलाएं। अब नीले थोथे के घोल को धीरे-धीरे चूने के पानी में डालें और लगातार हिलाते रहें। जांच के लिए साफ लोहे का चाकू डुबोएं — यदि चाकू पर तांबे की लाल परत दिखे तो घोल अम्लीय है, इसमें थोड़ा और चूना मिलाएं।'
+      : 'To prepare 1% Bordeaux Mixture: Dissolve 1 kg Copper Sulphate (Neela Thotha) in 50L water in an earthen or plastic vessel. In another vessel, slake 1 kg Quicklime (Chuna) in 50L water. Slowly pour the copper sulphate solution into the lime suspension while stirring continuously. Test with a clean iron knife blade; if reddish copper deposits appear, add more lime until neutral.';
+  } else if (msg.includes('alternaria') || msg.includes('early blight') || msg.includes('late blight') || msg.includes('झुलसा') || msg.includes('difference') || msg.includes('अंतर')) {
+    reply = lang === 'hi'
+      ? 'अगेती झुलसा (Early Blight) निचली पुरानी पत्तियों पर गोल छल्लेदार (टारगेट बोर्ड) धब्बे बनाता है — इसके लिए अमिसटार टॉप 15ml या मैंकोजेब 40g प्रति 15L पंप का छिड़काव करें। पछेती झुलसा (Late Blight) कोहरे व नमी में पत्तियों के निचले हिस्से पर सफेद रुई जैसी फफूंद व तेजी से गलने वाले पानी-भीगे धब्बे बनाता है — तुरंत कर्ज़ेट 40g या रिडोमिल गोल्ड 35g प्रति 15L पंप का छिड़काव करें।'
+      : 'Early Blight (Alternaria) forms dry concentric target-board rings starting on older lower leaves (spray Amistar Top @ 1ml/L or Mancozeb @ 2.5g/L). Late Blight (Phytophthora) produces rapidly expanding water-soaked greasy patches with white downy fuzz on leaf undersides during cool humid weather (immediately spray Curzate @ 2.5g/L or Ridomil Gold @ 2.5g/L).';
+  } else if (msg.includes('neem') || msg.includes('organic') || msg.includes('whitefly') || msg.includes('जैविक') || msg.includes('मक्खी')) {
+    reply = lang === 'hi'
+      ? 'जैविक फसल सुरक्षा: 15 लीटर पंप में 50-60ml कोल्ड-प्रेस्ड नीम तेल (10,000 ppm) और 15ml तरल साबुन/चिपचिपा (स्टीकर) गुनगुने पानी में अच्छी तरह घोलें। सफेद मक्खी और फफूंद नियंत्रण के लिए 75g ट्राइकोडर्मा विरिडी भी मिला सकते हैं। छिड़काव सुबह या शाम के समय करें।'
+      : 'Organic Crop Shield (15L Pump): Mix 50-60ml cold-pressed Neem Oil (10,000 ppm) with 15ml mild liquid soap or sticker in 15L lukewarm water. For whitefly (TYLCV vector), install 10 yellow sticky traps per acre and spray in early morning or late evening.';
+  } else if (msg.includes('dosage') || msg.includes('spray') || msg.includes('pump') || msg.includes('पंप') || msg.includes('मात्रा') || msg.includes('mancozeb') || msg.includes('मैंकोजेब')) {
+    reply = lang === 'hi'
+      ? 'मानक 15-लीटर नैपसैक स्प्रेयर पंप माप: मैंकोजेब 75 WP (40 ग्राम), अमिसटार टॉप (15 मिली), रिडोमिल गोल्ड (35-40 ग्राम), कॉपर ऑक्सीक्लोराइड 50 WP (45 ग्राम), स्ट्रेप्टोसाइक्लिन (1.5 ग्राम) और नीम तेल (60 मिली)। छिड़काव करते समय स्टीकर (10ml) अवश्य मिलाएं और मास्क पहनें।'
+      : 'Standard 15-Liter Knapsack Sprayer Tank Dosages: Mancozeb 75 WP (38-40g), Amistar Top (15ml), Ridomil Gold (35-40g), Copper Oxychloride 50 WP (45g), Streptocycline (1.5g), Cold-Pressed Neem Oil (60ml). Add 10ml wetting sticker per tank and wear protective gloves and mask.';
   } else {
-    reply = 'Kisan Mitra Agronomy Tip: Ensure regular field scouting, inspect the underside of leaves for early lesion halos or aphids, and maintain proper crop earthing-up. Upload a clear photo of any affected leaf or tuber for instant AI diagnosis and prescription.';
+    reply = lang === 'hi'
+      ? 'किसान मित्र कृषि सलाह: रोज़ सुबह खेत का निरीक्षण करें, पत्तियों की निचली सतह पर फफूंद या सफेद मक्खी देखें और सिंचाई सुबह के समय जड़ के पास करें। सटीक पीएचडी रोग जांच और 15L पंप दवा माप जानने के लिए प्रभावित पत्ती या आलू की साफ फोटो अपलोड करें।'
+      : 'Kisan Mitra Agronomy Tip: Scout fields in early morning, inspect leaf undersides for white sporangia or vectors (whiteflies/aphids), and prefer furrow/drip irrigation over overhead sprinklers. Upload a clear close-up photo of any affected tomato or potato leaf/tuber for an instant PhD pathology report and 15L sprayer recipe.';
   }
 
   res.json({

@@ -643,6 +643,38 @@ class CropDiagnosisEngine {
       icar_recommendation: diseaseInfo.icar_recommendation || 'ICAR & State Agricultural Universities IPM: 3-year non-solanaceous crop rotation, certified disease-free seed/tubers, and prophylactic bio-fungicide treatment.'
     };
 
+    const chemNameHi = (diseaseInfo.chemical_treatments && diseaseInfo.chemical_treatments[0])
+      ? diseaseInfo.chemical_treatments[0].chemical
+      : 'नीम का तेल (10,000 ppm)';
+
+    const phdPathologyHi = {
+      taxonomy: `${diseaseInfo.category} — ${diseaseInfo.pathogen}`,
+      epidemiology: diseaseInfo.category.includes('Fungal') || diseaseInfo.category.includes('Oomycete')
+        ? 'अनुकूल मौसम: तापमान 18-28°C तथा सापेक्ष आर्द्रता > 85%। फफूंद के बीजाणु हवा, बारिश की बौछार और सुबह की ओस से फैलते हैं। संक्रमण काल: 3-7 दिन।'
+        : diseaseInfo.category.includes('Bacterial')
+        ? 'अनुकूल मौसम: 25-32°C तापमान, अधिक नमी व तेज बारिश। जीवाणु पत्तियों के रंध्रों (स्टोमेटा) व जड़ों के घाव से प्रवेश करते हैं। संक्रमण काल: 2-5 दिन।'
+        : diseaseInfo.category.includes('Viral')
+        ? 'वाहक कीट द्वारा प्रसार: सफेद मक्खी (Bemisia tabaci) या माहू (Aphids) के माध्यम से फैलता है। संवहनी ऊतक में फैलने के बाद इसका सीधा इलाज संभव नहीं, रोकथाम ही सर्वोत्तम उपाय है।'
+        : 'पर्यावरणीय एवं पोषण विकार: मिट्टी में नमी के उतार-चढ़ाव, पीएच असंतुलन या जड़ों द्वारा पोषक तत्व न सोख पाने के कारण उत्पन्न।',
+      differential_diagnosis: topKey.includes('Early_blight')
+        ? 'पहचान कुंजी: पुरानी निचली पत्तियों पर पीले घेरे के साथ गोल छल्लेदार (टारगेट बोर्ड) धब्बे जो मुख्य शिराओं से सीमित रहते हैं। सेप्टोरिया से अंतर: इसके धब्बे बड़े (>5mm) होते हैं और बीच में काले बिंदु नहीं होते।'
+        : topKey.includes('Late_blight')
+        ? 'पहचान कुंजी: तेजी से फैलने वाले पानी-भीगे काले-भूरे धब्बे; अधिक नमी व कोहरे में पत्ती के निचले हिस्से पर सफेद मखमली फफूंद (स्पोरैंजिया) स्पष्ट दिखाई देती है। तने पर भी चिकने काले घाव बनते हैं।'
+        : topKey.includes('Bacterial_spot')
+        ? 'पहचान कुंजी: पत्तियों पर 1-3mm छोटे गहरे भूरे-काले धब्बे जिनके चारों ओर स्पष्ट पीला प्रभामंडल (हलो) होता है। फलों पर उभरे हुए खुरदुरे चकत्ते बनते हैं।'
+        : topKey.includes('Septoria')
+        ? 'पहचान कुंजी: अनगिनत छोटे (2-4mm) गोल धब्बे जिनकी बाहरी किनारी गहरी भूरी व केंद्र राख जैसा सफेद होता है, जिसमें सूक्ष्म काले बिंदु (पाइक्निडिया) दिखते हैं।'
+        : topKey.includes('Powdery_mildew')
+        ? 'पहचान कुंजी: पत्ती की ऊपरी व निचली सतह पर सफेद टेलकम पाउडर जैसा चूर्ण। इसे फैलने के लिए बारिश या पत्ती पर पानी की बूंदों की जरूरत नहीं होती; सूखी हवा से बीजाणु उड़ते हैं।'
+        : topKey.includes('Pink_rot')
+        ? 'पहचान कुंजी: आलू को काटने पर हवा के संपर्क में आने के 15-20 मिनट के भीतर गूदा हल्के गुलाबी (साल्मन पिंक) रंग का हो जाता है और बाद में भूरा-काला पड़ जाता है; बनावट स्पंज जैसी व रबड़दार होती है।'
+        : `विशिष्ट रोग लक्षण: ${diseaseInfo.hindi_name} — ${diseaseInfo.symptoms.slice(0, 90)}`,
+      knapsack_15l_recipe: (diseaseInfo.chemical_treatments && diseaseInfo.chemical_treatments.length > 0)
+        ? `मानक 15-लीटर नैपसैक स्प्रेयर पंप विधि: एक बाल्टी में 2 लीटर साफ पानी लेकर ${chemNameHi.split(' ')[0]} की अनुशंसित मात्रा (लगभग 35-40 ग्राम या 15 मिली तरल) का गाढ़ा घोल बनाएं। इसे 15 लीटर पंप टंकी में डालकर पूरा पानी भरें और बेहतर फैलाव के लिए 10ml कृषि स्टीकर मिलाएं। छिड़काव सुबह 7-10 बजे या शाम के समय करें।`
+        : 'मानक 15-लीटर स्प्रेयर पंप विधि: 15 लीटर हल्के गुनगुने पानी में 60ml कोल्ड-प्रेस्ड नीम तेल (10,000 ppm) और 15ml तरल साबुन/स्टीकर मिलाकर अच्छी तरह हिलाएं और पत्तियों की दोनों सतहों पर समान छिड़काव करें।',
+      icar_recommendation: 'ICAR एवं कृषि विश्वविद्यालय आईपीएम (IPM) निर्देश: 3-वर्षीय गैर-सोलेनेसी फसल चक्र (मक्का, दलहन) अपनाएं, प्रमाणित रोगमुक्त बीज/कंद का प्रयोग करें और रोग के शुरुआती लक्षण दिखते ही जैविक या अनुशंसित उपचार करें।'
+    };
+
     return {
       status: 'success',
       crop: chosenCrop,
@@ -660,6 +692,7 @@ class CropDiagnosisEngine {
       },
       top_predictions: topPredictionsList,
       phd_pathology: phdPathology,
+      phd_pathology_hi: phdPathologyHi,
       symptoms_and_causes: {
         symptoms: diseaseInfo.symptoms,
         causes: diseaseInfo.causes
