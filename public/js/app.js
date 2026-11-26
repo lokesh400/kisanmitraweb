@@ -1,12 +1,13 @@
 /**
  * Kisan Mitra (किसान मित्र) — Client UI & Pathology Controller
- * Bilingual (English & Hindi), Accessible Tabs, Native Modal Dialog, PhD Diagnosis
+ * Clean, distraction-free, responsive, bilingual (English & Hindi),
+ * with 43-condition interactive guide and adaptive lighting indicators.
  */
 
 let currentImageBlob = null;
 let currentDiagnosisData = null;
 let cameraStream = null;
-let activeMode = "upload";
+let cachedDiseases = null;
 
 document.addEventListener("DOMContentLoaded", () => {
     initLanguage();
@@ -17,6 +18,8 @@ document.addEventListener("DOMContentLoaded", () => {
     initProtocolTabs();
     initActions();
     initChat();
+    initEncyclopedia();
+    initDialogLightDismissFallback();
 });
 
 /* ---------------- Crop Focus Selector ---------------- */
@@ -33,13 +36,8 @@ function initCropSelect() {
                 b.setAttribute("aria-pressed", String(isActive));
             });
 
-            if (cropSelect) {
-                cropSelect.value = selectedCrop;
-            }
-
-            if (currentImageBlob) {
-                executeDiagnosis(currentImageBlob);
-            }
+            if (cropSelect) cropSelect.value = selectedCrop;
+            if (currentImageBlob) executeDiagnosis(currentImageBlob);
         });
     });
 }
@@ -56,6 +54,7 @@ function initLanguage() {
         btnEn.addEventListener("click", () => {
             setLanguage("en");
             if (currentDiagnosisData) renderDiagnosis(currentDiagnosisData);
+            if (cachedDiseases) renderEncyclopediaList();
         });
     }
 
@@ -63,6 +62,7 @@ function initLanguage() {
         btnHi.addEventListener("click", () => {
             setLanguage("hi");
             if (currentDiagnosisData) renderDiagnosis(currentDiagnosisData);
+            if (cachedDiseases) renderEncyclopediaList();
         });
     }
 }
@@ -76,7 +76,6 @@ function initModeTabs() {
 
     if (tabUpload && tabCamera) {
         tabUpload.addEventListener("click", () => {
-            activeMode = "upload";
             tabUpload.classList.add("active");
             tabCamera.classList.remove("active");
             tabUpload.setAttribute("aria-selected", "true");
@@ -87,7 +86,6 @@ function initModeTabs() {
         });
 
         tabCamera.addEventListener("click", () => {
-            activeMode = "camera";
             tabCamera.classList.add("active");
             tabUpload.classList.remove("active");
             tabCamera.setAttribute("aria-selected", "true");
@@ -99,7 +97,7 @@ function initModeTabs() {
     }
 }
 
-/* ---------------- Upload Dropzone & Keyboard Accessibility ---------------- */
+/* ---------------- Upload Dropzone ---------------- */
 function initDropzone() {
     const dropzone = document.getElementById("dropzone");
     const fileInput = document.getElementById("file-input");
@@ -205,7 +203,6 @@ function initCamera() {
 
             canvas.toBlob((blob) => {
                 stopCameraStream();
-                activeMode = "upload";
                 const tabUpload = document.getElementById("tab-mode-upload");
                 const tabCamera = document.getElementById("tab-mode-camera");
                 const camSection = document.getElementById("camera-section");
@@ -254,8 +251,8 @@ async function startCameraStream(facing = "environment") {
     } catch (err) {
         console.warn("Camera access failed:", err);
         alert(currentLang === "hi"
-            ? "कैमरा उपलब्ध नहीं है। कृपया 'फोटो अपलोड करें' का उपयोग करें।"
-            : "Camera access is not available. Please use the 'Upload Photo' option.");
+            ? "कैमरा उपलब्ध नहीं है। कृपया 'फोटो अपलोड' विकल्प चुनें।"
+            : "Camera access is not available. Please use 'Upload Photo'.");
     }
 }
 
@@ -268,11 +265,10 @@ function stopCameraStream() {
     if (video) video.style.display = "none";
 }
 
-/* ---------------- Accessible Tablist (aria-selected + hidden + arrow keys) ---------------- */
+/* ---------------- Accessible Tablist ---------------- */
 function initProtocolTabs() {
-    const tablist = document.querySelector(".protocol-tablist");
     const tabs = Array.from(document.querySelectorAll(".proto-tab"));
-    if (!tablist || tabs.length === 0) return;
+    if (tabs.length === 0) return;
 
     const activateTab = (selectedTab, moveFocus = false) => {
         tabs.forEach(tab => {
@@ -282,15 +278,11 @@ function initProtocolTabs() {
             const panel = panelId ? document.getElementById(panelId) : null;
             if (panel) {
                 panel.hidden = !isSelected;
-                if (isSelected) {
-                    panel.setAttribute("tabindex", "0");
-                } else {
-                    panel.removeAttribute("tabindex");
-                }
+                if (isSelected) panel.setAttribute("tabindex", "0");
+                else panel.removeAttribute("tabindex");
             }
         });
 
-        // Scroll only within tablist container cleanly
         if (typeof selectedTab.scrollIntoView === "function") {
             try {
                 selectedTab.scrollIntoView({ block: "nearest", inline: "nearest", container: "nearest" });
@@ -318,7 +310,7 @@ function initProtocolTabs() {
     });
 }
 
-/* ---------------- Diagnosis Request ---------------- */
+/* ---------------- Execute Diagnosis ---------------- */
 async function executeDiagnosis(imageBlob) {
     const loadingState = document.getElementById("loading-state");
     const emptyState = document.getElementById("empty-state");
@@ -330,7 +322,7 @@ async function executeDiagnosis(imageBlob) {
     if (loadingState) loadingState.style.display = "flex";
     if (btnDiagnose) {
         btnDiagnose.disabled = true;
-        btnDiagnose.innerHTML = `<span aria-hidden="true">⏳</span> <span>${getLocalizedText("btn_diagnosing", "Analyzing Pathology...")}</span>`;
+        btnDiagnose.innerHTML = `<span aria-hidden="true">⏳</span> <span>${getLocalizedText("btn_diagnosing", "Analyzing...")}</span>`;
     }
 
     try {
@@ -346,9 +338,7 @@ async function executeDiagnosis(imageBlob) {
             body: formData
         });
 
-        if (!response.ok) {
-            throw new Error(`Server returned ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Server returned ${response.status}`);
 
         const data = await response.json();
         currentDiagnosisData = data;
@@ -357,18 +347,18 @@ async function executeDiagnosis(imageBlob) {
         console.error("Diagnosis failure:", err);
         alert(currentLang === "hi"
             ? `जांच विफल रही: ${err.message}`
-            : `Diagnosis failed: ${err.message}. Please ensure the server is running.`);
+            : `Diagnosis failed: ${err.message}`);
         if (emptyState) emptyState.style.display = "flex";
     } finally {
         if (loadingState) loadingState.style.display = "none";
         if (btnDiagnose) {
             btnDiagnose.disabled = false;
-            btnDiagnose.innerHTML = `<span aria-hidden="true">🔍</span> <span>${getLocalizedText("btn_diagnose", "Diagnose Crop Health")}</span>`;
+            btnDiagnose.innerHTML = `<span aria-hidden="true">🔍</span> <span>${getLocalizedText("btn_diagnose", "Diagnose Crop")}</span>`;
         }
     }
 }
 
-/* ---------------- Render Diagnosis & Bilingual PhD Report ---------------- */
+/* ---------------- Render Diagnosis Dashboard ---------------- */
 function renderDiagnosis(data) {
     const resultDetails = document.getElementById("result-details");
     const emptyState = document.getElementById("empty-state");
@@ -376,12 +366,15 @@ function renderDiagnosis(data) {
     if (emptyState) emptyState.style.display = "none";
     if (resultDetails) resultDetails.style.display = "block";
 
+    const lightingBadge = document.getElementById("lighting-badge");
+
     if (data.status === "unclear_leaf") {
+        if (lightingBadge) lightingBadge.hidden = true;
         document.getElementById("disease-name").textContent = currentLang === "hi"
-            ? "पत्ती या फसल स्पष्ट नहीं दिखी"
+            ? "स्पष्ट पत्ती या कंद नहीं मिला"
             : data.prediction.name;
-        document.getElementById("disease-hindi").textContent = data.message || "कृपया पत्ते या आलू पर कैमरा केंद्रित करें।";
-        document.getElementById("disease-pathogen").textContent = `Vegetation Detected: ${data.vegetation_percentage || 0}% (Minimum required: 10%)`;
+        document.getElementById("disease-hindi").textContent = data.message || "कृपया पत्ते पर कैमरा केंद्रित करें।";
+        document.getElementById("disease-pathogen").textContent = `Vegetation Detected: ${data.vegetation_percentage || 0}%`;
         document.getElementById("confidence-text").textContent = "0%";
 
         const sevBadge = document.getElementById("severity-badge");
@@ -392,8 +385,8 @@ function renderDiagnosis(data) {
             <div class="remedy-card" style="border-inline-start-color: #b91c1c;">
                 <div class="remedy-title">⚠️ ${currentLang === "hi" ? "फोटो निर्देश" : "Photography Guidance"}</div>
                 <div class="remedy-detail">${currentLang === "hi"
-                    ? "अपलोड की गई फोटो में पत्ती या आलू साफ नहीं दिख रहा है। कृपया पत्ते को करीब से और प्राकृतिक रोशनी में लें।"
-                    : "The uploaded image does not show enough plant foliage or tuber texture. Frame the affected leaf closely in natural daylight."}</div>
+                    ? "अपलोड की गई फोटो में टमाटर या आलू की पत्ती/कंद साफ नहीं दिख रहा। कृपया पत्ते को फ्रेम के बीच में रखकर दोबारा फोटो लें।"
+                    : "Not enough tomato or potato leaf, stem, or tuber tissue detected. Center a clear close-up photo and try again."}</div>
             </div>
         `;
         document.getElementById("chemical-treatments-list").innerHTML = "";
@@ -419,22 +412,34 @@ function renderDiagnosis(data) {
     if (cropBadge) {
         const cropLabel = data.crop || pred.crop || "Tomato";
         cropBadge.textContent = currentLang === "hi"
-            ? (cropLabel === "Potato" ? "🥔 आलू (POTATO)" : "🍅 टमाटर (TOMATO)")
+            ? (cropLabel === "Potato" ? "🥔 आलू" : "🍅 टमाटर")
             : (cropLabel === "Potato" ? "🥔 POTATO" : "🍅 TOMATO");
         cropBadge.style.backgroundColor = cropLabel === "Potato" ? "#b45309" : "#146c37";
+    }
+
+    if (lightingBadge) {
+        if (data.metadata?.extreme_condition_mode) {
+            lightingBadge.hidden = false;
+            const isDark = data.metadata.lighting_summary?.isLowLight;
+            lightingBadge.textContent = currentLang === "hi"
+                ? (isDark ? "🌙 कम रोशनी सुधार लागू" : "☀️ तेज रोशनी संतुलित")
+                : (isDark ? "🌙 Low-Light Enhanced" : "☀️ Exposure Balanced");
+        } else {
+            lightingBadge.hidden = true;
+        }
     }
 
     const localizedTitle = getDiseaseLocalizedName(pred.name, "hi");
     document.getElementById("disease-name").textContent = currentLang === "hi" ? localizedTitle : pred.name;
     document.getElementById("disease-hindi").textContent = currentLang === "hi" ? pred.name : localizedTitle;
-    document.getElementById("disease-pathogen").textContent = `${getLocalizedText("pathogen", "Pathogen")}: ${pred.pathogen}`;
+    document.getElementById("disease-pathogen").textContent = pred.pathogen;
     document.getElementById("confidence-text").textContent = `${pred.confidence_percent}%`;
 
     const sevBadge = document.getElementById("severity-badge");
     sevBadge.textContent = getLocalizedSeverity(pred.severity, currentLang);
     sevBadge.style.backgroundColor = pred.badge_color || "#146c37";
 
-    // Tab 1: Organic Remedies
+    // Tab 1: Organic
     const organicList = document.getElementById("organic-remedies-list");
     organicList.innerHTML = (treat.organic_remedies || []).map(item => `
         <div class="remedy-card">
@@ -442,11 +447,9 @@ function renderDiagnosis(data) {
         </div>
     `).join("") || `<p class="remedy-detail">${currentLang === "hi" ? "विशेष जैविक उपचार आवश्यक नहीं है।" : "No special organic intervention required."}</p>`;
 
-    // Tab 2: Chemical Treatments & 15L Knapsack Sprayer Recipe
+    // Tab 2: Chemical & 15L Knapsack Sprayer
     const knapsackText = document.getElementById("knapsack-recipe-text");
-    if (knapsackText) {
-        knapsackText.textContent = phd.knapsack_15l_recipe || "";
-    }
+    if (knapsackText) knapsackText.textContent = phd.knapsack_15l_recipe || "";
 
     const chemicalList = document.getElementById("chemical-treatments-list");
     if (treat.chemical_treatments && treat.chemical_treatments.length > 0) {
@@ -454,24 +457,24 @@ function renderDiagnosis(data) {
             <div class="remedy-card chemical">
                 <div class="remedy-title">🧪 ${escapeHtml(item.chemical)}</div>
                 <div class="remedy-dosage-tag">${currentLang === "hi" ? "मात्रा" : "Dosage"}: ${escapeHtml(item.dosage)}</div>
-                <div class="remedy-detail">${currentLang === "hi" ? "विधि/अंतराल" : "Interval"}: ${escapeHtml(item.interval)}</div>
+                <div class="remedy-detail">${currentLang === "hi" ? "विधि" : "Interval"}: ${escapeHtml(item.interval)}</div>
             </div>
         `).join("");
     } else {
-        chemicalList.innerHTML = `<div class="remedy-card"><div class="remedy-detail">✅ ${currentLang === "hi" ? "रासायनिक छिड़काव की आवश्यकता नहीं है। फसल स्वस्थ है।" : "No chemical spray needed. Crop condition appears healthy."}</div></div>`;
+        chemicalList.innerHTML = `<div class="remedy-card"><div class="remedy-detail">✅ ${currentLang === "hi" ? "रासायनिक छिड़काव की आवश्यकता नहीं है।" : "No chemical spray required."}</div></div>`;
     }
 
-    // Tab 3: PhD Pathology Panel
+    // Tab 3: Pathology
     document.getElementById("phd-taxonomy-text").textContent = phd.taxonomy || `${pred.category} — ${pred.pathogen}`;
     document.getElementById("phd-epidemiology-text").textContent = phd.epidemiology || data.symptoms_and_causes?.causes || "";
     document.getElementById("phd-differential-text").textContent = phd.differential_diagnosis || data.symptoms_and_causes?.symptoms || "";
     document.getElementById("phd-icar-text").textContent = phd.icar_recommendation || "";
 
-    // Tab 4: Nutrient & Soil Health
+    // Tab 4: Soil & Nutrients
     const defContent = document.getElementById("deficiency-content");
     let defHTML = `
         <div class="remedy-card deficiency">
-            <div class="remedy-title">🌱 ${currentLang === "hi" ? "उर्वरक एवं पोषण अनुशंसा" : "Soil & Fertilizer Recommendation"}</div>
+            <div class="remedy-title">🌱 ${currentLang === "hi" ? "खाद एवं पोषण सलाह" : "Fertilizer Recommendation"}</div>
             <div class="remedy-detail">${escapeHtml(treat.fertilizer_recommendation || "Balanced NPK nutrition.")}</div>
         </div>
     `;
@@ -479,16 +482,16 @@ function renderDiagnosis(data) {
         spectral.suspected_deficiencies.forEach(d => {
             defHTML += `
                 <div class="remedy-card deficiency">
-                    <div class="remedy-title">⚠️ ${currentLang === "hi" ? "संभावित पोषक कमी" : "Suspected Deficiency"}: ${escapeHtml(d.nutrient)} (${d.confidence}%)</div>
+                    <div class="remedy-title">⚠️ ${escapeHtml(d.nutrient)} (${d.confidence}%)</div>
                     <div class="remedy-detail">${escapeHtml(d.reason)}</div>
-                    <div class="remedy-detail"><strong>${currentLang === "hi" ? "सुधार उपाय" : "Correction"}:</strong> ${escapeHtml(d.guide.correction)}</div>
+                    <div class="remedy-detail"><strong>${currentLang === "hi" ? "उपाय" : "Correction"}:</strong> ${escapeHtml(d.guide.correction)}</div>
                 </div>
             `;
         });
     }
     defContent.innerHTML = defHTML;
 
-    // Tab 5: Preventive Care
+    // Tab 5: Preventive
     const prevList = document.getElementById("preventive-list");
     prevList.innerHTML = (treat.preventive_measures || []).map(item => `
         <div class="remedy-card">
@@ -509,7 +512,7 @@ function renderDiagnosis(data) {
     document.getElementById("spectral-yellow").textContent = `${yellowPct}%`;
     document.getElementById("spectral-brown").textContent = `${brownPct}%`;
 
-    // Alternatives Progress Bars
+    // Alternatives
     const altContainer = document.getElementById("alternatives-container");
     altContainer.innerHTML = (data.top_predictions || []).map(c => `
         <div class="alt-row">
@@ -535,7 +538,7 @@ function renderDiagnosis(data) {
     }
 }
 
-/* ---------------- Actions (WhatsApp, Print, Helpline Button) ---------------- */
+/* ---------------- Actions ---------------- */
 function initActions() {
     const btnWhatsapp = document.getElementById("btn-whatsapp");
     const btnPrint = document.getElementById("btn-print");
@@ -549,7 +552,7 @@ function initActions() {
     if (btnWhatsapp) {
         btnWhatsapp.addEventListener("click", () => {
             if (!currentDiagnosisData) {
-                alert(currentLang === "hi" ? "कृपया पहले पत्ती की जांच करें।" : "Please diagnose a crop leaf first.");
+                alert(currentLang === "hi" ? "कृपया पहले पत्ती की जांच करें।" : "Please diagnose a photo first.");
                 return;
             }
             const pred = currentDiagnosisData.prediction;
@@ -561,24 +564,20 @@ function initActions() {
             const detectedCrop = currentDiagnosisData.crop || pred.crop || "Tomato";
 
             const msg = currentLang === "hi"
-                ? `🌿 *किसान मित्र (Kisan Mitra) फसल रोग पर्ची* 🌿\n\n` +
+                ? `🌿 *किसान मित्र (Kisan Mitra) दवा पर्ची* 🌿\n\n` +
                   `📍 *फसल:* ${detectedCrop === "Potato" ? "आलू (Potato)" : "टमाटर (Tomato)"}\n` +
                   `🔍 *पहचान:* ${pred.hindi_name} (${pred.name})\n` +
-                  `📊 *सटीकता:* ${pred.confidence_percent}%\n` +
                   `⚠️ *गंभीरता:* ${pred.severity}\n\n` +
-                  `⚡ *15L स्प्रेयर पंप माप:* ${phd.knapsack_15l_recipe || ""}\n` +
+                  `⚡ *15L स्प्रेयर पंप:* ${phd.knapsack_15l_recipe || ""}\n` +
                   `🧪 *रासायनिक दवा:* ${topChemical}\n` +
-                  `🌱 *जैविक उपचार:* ${treat.organic_remedies[0] || "नीम का तेल (5ml/L)"}\n\n` +
-                  `_किसान मित्र पीएचडी पौध रोग विज्ञान डॉक्टर द्वारा प्रमाणित_`
-                : `🌿 *Kisan Mitra (किसान मित्र) Crop Prescription* 🌿\n\n` +
+                  `🌱 *जैविक उपचार:* ${treat.organic_remedies[0] || "नीम का तेल (5ml/L)"}`
+                : `🌿 *Kisan Mitra Crop Prescription* 🌿\n\n` +
                   `📍 *Crop:* ${detectedCrop}\n` +
                   `🔍 *Diagnosis:* ${pred.name} (${pred.hindi_name})\n` +
-                  `📊 *Accuracy:* ${pred.confidence_percent}%\n` +
                   `⚠️ *Severity:* ${pred.severity}\n\n` +
-                  `⚡ *15L Knapsack Pump Recipe:* ${phd.knapsack_15l_recipe || ""}\n` +
-                  `🧪 *Prescribed Chemical:* ${topChemical}\n` +
-                  `🌱 *Organic Remedy:* ${treat.organic_remedies[0] || "Neem Oil 5ml/L"}\n\n` +
-                  `_Verified by Kisan Mitra Tomato & Potato Pathology Doctor_`;
+                  `⚡ *15L Sprayer Pump:* ${phd.knapsack_15l_recipe || ""}\n` +
+                  `🧪 *Chemical:* ${topChemical}\n` +
+                  `🌱 *Organic:* ${treat.organic_remedies[0] || "Neem Oil 5ml/L"}`;
 
             window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
         });
@@ -589,7 +588,143 @@ function initActions() {
     }
 }
 
-/* ---------------- Native Modal Dialog (<dialog>) Kisan AI Chat ---------------- */
+/* ---------------- Disease Encyclopedia Modal (43 Conditions Lookup) ---------------- */
+function initEncyclopedia() {
+    const btnOpen = document.getElementById("btn-nav-diseases");
+    const encDialog = document.getElementById("encyclopedia-modal");
+    const btnClose = document.getElementById("encyclopedia-close");
+    const searchInput = document.getElementById("enc-search");
+    const filterBtns = document.querySelectorAll(".enc-filter-btn");
+
+    if (!encDialog || !btnOpen) return;
+
+    btnOpen.addEventListener("click", async () => {
+        encDialog.showModal();
+        if (!cachedDiseases) {
+            try {
+                const res = await fetch("/api/v1/diseases");
+                const data = await res.json();
+                cachedDiseases = data.diseases || [];
+            } catch (err) {
+                console.error("Failed to fetch diseases catalog:", err);
+                cachedDiseases = [];
+            }
+        }
+        renderEncyclopediaList();
+    });
+
+    if (btnClose) btnClose.addEventListener("click", () => encDialog.close());
+    if (searchInput) searchInput.addEventListener("input", () => renderEncyclopediaList());
+
+    filterBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            filterBtns.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            renderEncyclopediaList();
+        });
+    });
+}
+
+function renderEncyclopediaList() {
+    const listEl = document.getElementById("enc-list");
+    const searchInput = document.getElementById("enc-search");
+    const activeFilterBtn = document.querySelector(".enc-filter-btn.active");
+    if (!listEl || !cachedDiseases) return;
+
+    const query = (searchInput?.value || "").toLowerCase().trim();
+    const filter = activeFilterBtn?.getAttribute("data-filter") || "all";
+
+    const filtered = cachedDiseases.filter(d => {
+        const matchesCrop = filter === "all" || (d.crop || "").toLowerCase().includes(filter);
+        if (!matchesCrop) return false;
+        if (!query) return true;
+        return (
+            (d.name || "").toLowerCase().includes(query) ||
+            (d.hindi_name || "").toLowerCase().includes(query) ||
+            (d.pathogen || "").toLowerCase().includes(query) ||
+            (d.symptoms || "").toLowerCase().includes(query)
+        );
+    });
+
+    listEl.innerHTML = filtered.map(d => {
+        const isPotato = (d.crop || "").toLowerCase() === "potato";
+        const title = currentLang === "hi" ? (d.hindi_name || d.name) : d.name;
+        const subtitle = currentLang === "hi" ? d.name : (d.pathogen || "");
+        return `
+            <button type="button" class="enc-item-card" data-disease-id="${escapeHtml(d.id)}">
+                <div>
+                    <div class="enc-item-title">${escapeHtml(title)}</div>
+                    <div class="enc-item-meta">${escapeHtml(subtitle)} • ${escapeHtml(d.category || "")}</div>
+                    <div class="enc-item-symptom">${escapeHtml(d.symptoms || "")}</div>
+                </div>
+                <span class="enc-item-crop ${isPotato ? "potato" : ""}">${isPotato ? (currentLang === "hi" ? "आलू" : "Potato") : (currentLang === "hi" ? "टमाटर" : "Tomato")}</span>
+            </button>
+        `;
+    }).join("") || `<p style="text-align:center; padding: 20px; color: var(--text-muted);">${currentLang === "hi" ? "कोई रोग नहीं मिला।" : "No matching condition found."}</p>`;
+
+    listEl.querySelectorAll(".enc-item-card").forEach(card => {
+        card.addEventListener("click", () => {
+            const id = card.getAttribute("data-disease-id");
+            const d = cachedDiseases.find(item => item.id === id);
+            if (!d) return;
+
+            const chemFirst = d.chemical_treatments?.[0];
+            currentDiagnosisData = {
+                status: "success",
+                crop: d.crop || "Tomato",
+                prediction: {
+                    disease_id: d.id,
+                    crop: d.crop || "Tomato",
+                    name: d.name,
+                    hindi_name: d.hindi_name,
+                    confidence_percent: 100,
+                    category: d.category,
+                    severity: d.severity,
+                    badge_color: d.badge_color,
+                    pathogen: d.pathogen,
+                    voice_summary: d.voice_summary
+                },
+                top_predictions: [{ class_index: 0, crop: d.crop, label: `${d.crop} - ${d.name}`, confidence: 100 }],
+                phd_pathology: {
+                    taxonomy: `${d.category} — ${d.pathogen}`,
+                    epidemiology: d.causes,
+                    differential_diagnosis: d.symptoms,
+                    knapsack_15l_recipe: chemFirst
+                        ? `Standard 15L Knapsack Sprayer: Dissolve recommended ${chemFirst.chemical} (${chemFirst.dosage}) cleanly in 15L water with 10ml wetting sticker.`
+                        : "Standard 15L Knapsack Sprayer: Mix 60ml cold-pressed Neem Oil (10,000 ppm) + 15ml mild liquid soap in 15L water.",
+                    icar_recommendation: "Follow 3-year non-solanaceous crop rotation and certified disease-free planting material."
+                },
+                phd_pathology_hi: {
+                    taxonomy: `${d.category} — ${d.pathogen}`,
+                    epidemiology: d.causes,
+                    differential_diagnosis: `${d.hindi_name} — ${d.symptoms}`,
+                    knapsack_15l_recipe: chemFirst
+                        ? `मानक 15-लीटर स्प्रेयर पंप विधि: ${chemFirst.chemical} (${chemFirst.dosage}) को 15 लीटर साफ पानी व 10ml स्टीकर के साथ घोलकर समान छिड़काव करें।`
+                        : "मानक 15-लीटर पंप: 60ml नीम तेल (10,000 ppm) और 15ml तरल साबुन 15 लीटर पानी में मिलाकर छिड़काव करें।",
+                    icar_recommendation: "3-वर्षीय गैर-सोलेनेसी फसल चक्र और प्रमाणित रोगमुक्त बीज/कंद का उपयोग करें।"
+                },
+                symptoms_and_causes: { symptoms: d.symptoms, causes: d.causes },
+                treatment_plan: {
+                    organic_remedies: d.organic_remedies || [],
+                    chemical_treatments: d.chemical_treatments || [],
+                    preventive_measures: d.preventive_measures || [],
+                    fertilizer_recommendation: d.fertilizer_recommendation || ""
+                },
+                spectral_deficiency_analysis: {
+                    green_ratio_pct: 65,
+                    yellow_chlorosis_pct: 20,
+                    brown_necrosis_pct: 15,
+                    suspected_deficiencies: []
+                }
+            };
+
+            document.getElementById("encyclopedia-modal").close();
+            renderDiagnosis(currentDiagnosisData);
+        });
+    });
+}
+
+/* ---------------- Native Modal Dialog Chat ---------------- */
 function initChat() {
     const chatBtn = document.getElementById("floating-chat-btn");
     const chatDialog = document.getElementById("chat-modal");
@@ -599,25 +734,8 @@ function initChat() {
 
     if (!chatDialog) return;
 
-    if (chatBtn) {
-        chatBtn.addEventListener("click", () => chatDialog.showModal());
-    }
-    if (chatClose) {
-        chatClose.addEventListener("click", () => chatDialog.close());
-    }
-
-    // Light-dismiss fallback for browsers without <dialog closedby="any">
-    if (!("closedBy" in HTMLDialogElement.prototype)) {
-        const isOutside = (e, dlg) => {
-            const r = dlg.getBoundingClientRect();
-            return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
-        };
-        let pressedOutside = false;
-        chatDialog.addEventListener("pointerdown", (e) => { pressedOutside = isOutside(e, chatDialog); });
-        chatDialog.addEventListener("pointerup", (e) => {
-            if (pressedOutside && isOutside(e, chatDialog)) chatDialog.close();
-        });
-    }
+    if (chatBtn) chatBtn.addEventListener("click", () => chatDialog.showModal());
+    if (chatClose) chatClose.addEventListener("click", () => chatDialog.close());
 
     const sendMsg = async () => {
         if (!chatInput) return;
@@ -644,8 +762,8 @@ function initChat() {
         } catch (err) {
             appendChatBubble(
                 currentLang === "hi"
-                    ? "सर्वर से संपर्क नहीं हो सका। कृपया जांचें कि सर्वर चालू है।"
-                    : "Unable to reach Kisan AI advisor. Please verify server connection.",
+                    ? "सर्वर से संपर्क नहीं हो सका।"
+                    : "Unable to reach Kisan AI advisor.",
                 "bot"
             );
         }
@@ -658,9 +776,7 @@ function initChat() {
         });
     }
 
-    // Quick prompt chips
-    const quickChips = document.querySelectorAll(".quick-chip");
-    quickChips.forEach(chip => {
+    document.querySelectorAll(".quick-chip").forEach(chip => {
         chip.addEventListener("click", () => {
             const promptText = chip.textContent.trim() || chip.getAttribute("data-prompt");
             if (chatInput && promptText) {
@@ -669,6 +785,24 @@ function initChat() {
             }
         });
     });
+}
+
+/* ---------------- Fallback Light-Dismiss Across Dialogs ---------------- */
+function initDialogLightDismissFallback() {
+    if ("closedBy" in HTMLDialogElement.prototype) return;
+
+    const isOutside = (e, dlg) => {
+        const r = dlg.getBoundingClientRect();
+        return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+    };
+
+    for (const dlg of document.querySelectorAll('dialog[closedby="any"]')) {
+        let pressedOutside = false;
+        dlg.addEventListener("pointerdown", (e) => { pressedOutside = isOutside(e, dlg); });
+        dlg.addEventListener("pointerup", (e) => {
+            if (pressedOutside && isOutside(e, dlg)) dlg.close();
+        });
+    }
 }
 
 function appendChatBubble(text, type) {
