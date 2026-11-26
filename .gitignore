@@ -20,3 +20,7 @@ Desktop.ini
 # Ensure AI models are tracked
 !models/dinov2_plant_disease.onnx
 !models/tomato_potato_classifier.json
+
+./Project_Report.pdf
+.Project_Report.pdf
+Project_Report.pdf
