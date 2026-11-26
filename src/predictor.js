@@ -1,8 +1,8 @@
 /**
  * Kisan Mitra AI - Dedicated Tomato & Potato Vision Doctor (Pure JavaScript)
- * Powered by Meta DINOv2 Vision Transformer (ViT-B/14, 768-dim) + Multi-Scale TTA
- * + Adaptive Extreme-Condition Lighting Recovery + Full 43-Condition Morphometry.
- * Exclusively focused on Tomato (19 conditions) and Potato (24 conditions).
+ * Powered by Meta DINOv2 Vision Transformer (ViT-B/14, 768-dim) + Multi-Scale
+ * & Adaptive Multi-Orientation TTA + Gray-World Lighting Recovery + OOD Gate
+ * + Full 43-Condition Tomato (19) & Potato (24) Morphometry.
  */
 
 const fs = require('fs');
@@ -10,6 +10,9 @@ const path = require('path');
 const sharp = require('sharp');
 const ort = require('onnxruntime-node');
 const { DISEASE_KNOWLEDGE_BASE, NUTRIENT_DEFICIENCY_GUIDE } = require('./knowledgeBase');
+
+const SOLANACEAE_38_INDICES = [20, 21, 22, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37];
+const POWDERY_MILDEW_38_INDICES = [5, 25];
 
 class CropDiagnosisEngine {
   constructor(modelPath, weightsPath) {
@@ -19,6 +22,7 @@ class CropDiagnosisEngine {
     this.session = null;
     this.hasTrainedHead = false;
     this.headWeights = null;
+    this.headNormWeights = null;
     this.headBiases = null;
     this.cropWeights = null;
     this.cropBiases = null;
@@ -48,6 +52,13 @@ class CropDiagnosisEngine {
         this.cropBiases = data.crop_biases;        // [1]
         this.trainedClasses = data.class_keys;
         this.trainedClassToIdx = {};
+        // Precompute L2-normalized class prototype vectors for cosine OOD verification
+        this.headNormWeights = this.headWeights.map(w => {
+          let normSq = 0;
+          for (let i = 0; i < w.length; i++) normSq += w[i] * w[i];
+          const n = Math.sqrt(normSq) + 1e-7;
+          return w.map(v => v / n);
+        });
         this.trainedClasses.forEach((k, idx) => {
           this.trainedClassToIdx[k] = idx;
         });
@@ -81,24 +92,14 @@ class CropDiagnosisEngine {
       }
       h *= 60;
     }
-    // OpenCV-compatible scaling: H in [0..180], S in [0..255], V in [0..255]
     return [Math.round(h / 2), Math.round(s * 255), Math.round(v * 255)];
   }
 
   /**
-   * High-speed 300x300 colorimetry, extreme lighting telemetry, spatial lesion zoning,
-   * and BFS punctate speck segmentation. Respects EXIF rotation automatically.
+   * Computes colorimetry, spatial lesion distribution, edge density, and punctate specks
+   * on a 300x300 RGB buffer. Reused for both raw pixels and lighting-recovered pixels.
    */
-  async analyzeColorAndMorphology(imageBuffer) {
-    const targetW = 300;
-    const targetH = 300;
-    const { data: pixels } = await sharp(imageBuffer)
-      .rotate() // Auto-apply smartphone EXIF orientation
-      .resize(targetW, targetH, { fit: 'fill' })
-      .removeAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-
+  analyzePixelBuffer(pixels, targetW = 300, targetH = 300, computeSpecks = true) {
     const total = targetW * targetH;
     let greenCount = 0;
     let deepShadeGreenCount = 0;
@@ -108,9 +109,8 @@ class CropDiagnosisEngine {
     let whiteSporeCount = 0;
     let yellowChlorosisCount = 0;
     let brownNecrosisCount = 0;
-    let validTissueCount = 0;
+    let validFoliarCount = 0;
 
-    // Extended morphometry for all 43 Solanaceae conditions
     let bottomDarkCount = 0;
     let upperDarkCount = 0;
     let centerCreamCount = 0;
@@ -122,11 +122,14 @@ class CropDiagnosisEngine {
     let grayMoldCount = 0;
     let highEdgeCount = 0;
 
-    // Illumination telemetry for extreme conditions (night/shade/fog/glare)
     let lumSum = 0;
+    let satSum = 0;
+    let rSum = 0;
+    let gSum = 0;
+    let bSum = 0;
     const lumHist = new Uint32Array(256);
 
-    const darkSpotGrid = new Uint8Array(total);
+    const darkSpotGrid = computeSpecks ? new Uint8Array(total) : null;
     const centerStart = 75;
     const centerEnd = 225;
     const centerArea = (centerEnd - centerStart) * (centerEnd - centerStart);
@@ -138,80 +141,73 @@ class CropDiagnosisEngine {
         const g = pixels[idx + 1];
         const b = pixels[idx + 2];
 
+        rSum += r;
+        gSum += g;
+        bSum += b;
         const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
         lumSum += lum;
         lumHist[Math.min(255, Math.max(0, lum))]++;
 
         const [h, s, v] = this.rgbToHsv(r, g, b);
+        satSum += s;
         const exg = 2.0 * g - r - b;
 
-        // 1. Standard + Low-light Shade Green Foliage
-        const isGreen = (h >= 28 && h <= 88 && s >= 30 && v >= 30);
-        const isShadeGreen = (h >= 26 && h <= 94 && s >= 22 && v >= 16 && v < 30 && g > r);
+        const isGreen = (h >= 28 && h <= 88 && s >= 28 && v >= 28);
+        const isShadeGreen = (h >= 26 && h <= 94 && s >= 20 && v >= 14 && v < 28 && g > r);
         if (isGreen) greenCount++;
         if (isShadeGreen) deepShadeGreenCount++;
 
-        // 2. Chlorosis & Necrosis
         const isYellow = (h >= 20 && h <= 35 && s >= 50 && v >= 45);
         const isBrown = (h >= 5 && h <= 20 && s >= 35 && v >= 15 && v <= 185);
         if (isYellow) yellowChlorosisCount++;
         if (isBrown) brownNecrosisCount++;
 
-        // 3. Salmon-pink cut tuber flesh (Potato Pink Rot)
         const isSalmonPink = (r > 90 && r > g + 10 && r > b + 10 && r <= 1.8 * g && s >= 40 && s <= 135);
         if (isSalmonPink) salmonPinkCount++;
 
-        // 4. Ripe red tomato fruit
-        const isRipeRed = (r > 105 && r > 1.75 * g && s > 125);
+        // Stricter ripe tomato lycopene check so warm-tinted potato tubers do not trigger
+        const isRipeRed = (r > 130 && r > 1.95 * g && r > 2.2 * b && s > 135);
         if (isRipeRed) ripeRedCount++;
 
-        // 5. Potato tuber skin / cream flesh
         const isTuberSkin = (h >= 8 && h <= 36 && s >= 18 && s <= 185 && v >= 35 && v <= 245);
         if (isTuberSkin) tuberSkinCount++;
 
-        // 6. White spore powder / mold tuft
         const isWhiteSpore = (s <= 45 && v >= 165);
         if (isWhiteSpore) whiteSporeCount++;
 
-        // 7. Additional Pathological Signatures
-        if (v < 45 && s < 75) pitchBlackCount++; // Black Scurf / Blackleg ink rot
-        if (h >= 8 && h <= 24 && s >= 55 && s <= 165 && v >= 55 && v <= 165) corkyBrownCount++; // Common Scab / Dry Rot
-        if (s <= 28 && v >= 135 && v <= 215 && r >= b - 8) silverySheenCount++; // Silver Scurf
-        if (((h >= 135 && h <= 178) || (r > g + 12 && b > g + 8)) && s >= 35 && v >= 35 && v <= 170) purpleBronzeCount++; // TSWV / Violet Root Rot
-        if (s <= 36 && v >= 85 && v <= 175) grayMoldCount++; // Gray Mold (Botrytis)
+        if (v < 45 && s < 75) pitchBlackCount++;
+        if (h >= 8 && h <= 24 && s >= 55 && s <= 165 && v >= 55 && v <= 165) corkyBrownCount++;
+        if (s <= 28 && v >= 135 && v <= 215 && r >= b - 8) silverySheenCount++;
+        if (((h >= 135 && h <= 178) || (r > g + 12 && b > g + 8)) && s >= 35 && v >= 35 && v <= 170) purpleBronzeCount++;
+        if (s <= 36 && v >= 85 && v <= 175) grayMoldCount++;
 
-        // Spatial fruit/stem lesion distribution
         if (v < 65 && s >= 20) {
           if (y >= 200) bottomDarkCount++;
           else if (y >= 40 && y < 180) upperDarkCount++;
         }
 
-        // Interior cut tuber flesh vs necrotic interior arcs
         if (x >= centerStart && x < centerEnd && y >= centerStart && y < centerEnd) {
           if (s <= 48 && v >= 155 && r >= 150 && g >= 145) centerCreamCount++;
           if (isBrown) centerBrownCount++;
         }
 
-        // Local edge contrast cue for rough corky scabs/warts
         if (x > 0 && y > 0) {
           const prevIdx = (y * targetW + (x - 1)) * 3;
           const grad = Math.abs(r - pixels[prevIdx]) + Math.abs(g - pixels[prevIdx + 1]) + Math.abs(b - pixels[prevIdx + 2]);
           if (grad > 65) highEdgeCount++;
         }
 
-        // 8. Dark necrotic speck grid (Bacterial speck/spot)
-        if (v < 75 && s >= 30) {
+        if (darkSpotGrid && v < 75 && s >= 30) {
           darkSpotGrid[y * targetW + x] = 1;
         }
 
-        // Botanical organic tissue validation
-        if (isGreen || isShadeGreen || exg > 0 || isYellow || isBrown || isTuberSkin || isSalmonPink || isRipeRed) {
-          validTissueCount++;
+        // Only count true foliar green / excess-green toward foliage ratio (never warm human skin)
+        if (isGreen || isShadeGreen || exg > 12) {
+          validFoliarCount++;
         }
       }
     }
 
-    // Luminance quantiles (5th & 95th percentile) for extreme lighting detection
     let p5 = 0;
     let p95 = 255;
     let cum = 0;
@@ -223,52 +219,60 @@ class CropDiagnosisEngine {
         break;
       }
     }
-    const meanLum = lumSum / total;
-    const contrastSpan = p95 - p5;
-    const isLowLight = meanLum < 62;
-    const isOverexposed = meanLum > 210;
-    const isLowContrastFog = (contrastSpan < 58 && greenCount / total < 0.45);
-    const isExtremeCondition = isLowLight || isOverexposed || isLowContrastFog;
 
-    // Connected Component Analysis on Dark Spot Grid for Speck Counting
+    const meanLum = lumSum / total;
+    const meanSat = satSum / total;
+    const rMean = rSum / total;
+    const gMean = gSum / total;
+    const bMean = bSum / total;
+    const contrastSpan = p95 - p5;
+    const channelSpread = Math.max(rMean, gMean, bMean) / (Math.min(rMean, gMean, bMean) + 1.0);
+
+    const isLowLight = meanLum < 68;
+    const isOverexposed = meanLum > 195 || (p95 >= 244 && meanLum > 160);
+    const isLowContrastFog = (contrastSpan < 70 && (greenCount / total) < 0.45) || (p5 > 45 && meanSat < 65);
+    const hasColorCast = channelSpread > 1.24;
+    const isExtremeCondition = isLowLight || isOverexposed || isLowContrastFog || hasColorCast;
+
     let speckCount = 0;
     let tinyPimpleCount = 0;
-    const visited = new Uint8Array(total);
-    for (let y = 0; y < targetH; y++) {
-      for (let x = 0; x < targetW; x++) {
-        const pIdx = y * targetW + x;
-        if (darkSpotGrid[pIdx] === 1 && visited[pIdx] === 0) {
-          let area = 0;
-          const queue = [pIdx];
-          visited[pIdx] = 1;
+    if (darkSpotGrid) {
+      const visited = new Uint8Array(total);
+      for (let y = 0; y < targetH; y++) {
+        for (let x = 0; x < targetW; x++) {
+          const pIdx = y * targetW + x;
+          if (darkSpotGrid[pIdx] === 1 && visited[pIdx] === 0) {
+            let area = 0;
+            const queue = [pIdx];
+            visited[pIdx] = 1;
 
-          while (queue.length > 0) {
-            const curr = queue.pop();
-            area++;
-            const cy = Math.floor(curr / targetW);
-            const cx = curr % targetW;
-
-            const neighbors = [
-              [cy - 1, cx], [cy + 1, cx], [cy, cx - 1], [cy, cx + 1]
-            ];
-            for (const [ny, nx] of neighbors) {
-              if (ny >= 0 && ny < targetH && nx >= 0 && nx < targetW) {
-                const nIdx = ny * targetW + nx;
-                if (darkSpotGrid[nIdx] === 1 && visited[nIdx] === 0) {
-                  visited[nIdx] = 1;
-                  queue.push(nIdx);
+            while (queue.length > 0) {
+              const curr = queue.pop();
+              area++;
+              const cy = Math.floor(curr / targetW);
+              const cx = curr % targetW;
+              const neighbors = [
+                [cy - 1, cx], [cy + 1, cx], [cy, cx - 1], [cy, cx + 1]
+              ];
+              for (const [ny, nx] of neighbors) {
+                if (ny >= 0 && ny < targetH && nx >= 0 && nx < targetW) {
+                  const nIdx = ny * targetW + nx;
+                  if (darkSpotGrid[nIdx] === 1 && visited[nIdx] === 0) {
+                    visited[nIdx] = 1;
+                    queue.push(nIdx);
+                  }
                 }
               }
             }
+            if (area >= 6 && area <= 120) speckCount++;
+            if (area >= 4 && area <= 28) tinyPimpleCount++;
           }
-          if (area >= 6 && area <= 120) speckCount++;
-          if (area >= 4 && area <= 28) tinyPimpleCount++;
         }
       }
     }
 
     return {
-      vegetationRatio: (validTissueCount / total) * 100,
+      foliarRatio: (validFoliarCount / total) * 100,
       greenPct: ((greenCount + deepShadeGreenCount) / total) * 100,
       salmonPinkPct: (salmonPinkCount / total) * 100,
       ripeRedPct: (ripeRedCount / total) * 100,
@@ -291,12 +295,63 @@ class CropDiagnosisEngine {
       lighting: {
         meanLum: Math.round(meanLum),
         contrastSpan,
+        p5,
+        p95,
+        rMean,
+        gMean,
+        bMean,
         isLowLight,
         isOverexposed,
         isLowContrastFog,
+        hasColorCast,
         isExtremeCondition
       }
     };
+  }
+
+  /**
+   * Soft gray-world white-balance + percentile luminance stretch in pure JS (<2ms).
+   * Restores true green/brown/pink pigments under warm sunset, fog washout, or deep shade.
+   */
+  balanceRawBuffer(pixels, lighting) {
+    const out = Buffer.allocUnsafe(pixels.length);
+    const { rMean, gMean, bMean, p5, p95 } = lighting;
+    const gray = (rMean + gMean + bMean) / 3.0;
+    const clampGain = v => Math.max(0.72, Math.min(1.38, v));
+    const rg = clampGain(gray / (rMean || 1));
+    const gg = clampGain(gray / (gMean || 1));
+    const bg = clampGain(gray / (bMean || 1));
+
+    const stretchLow = Math.max(0, p5 - 4);
+    const stretchSpan = Math.max(32, p95 - stretchLow);
+    const scale = 255.0 / stretchSpan;
+
+    for (let i = 0; i < pixels.length; i += 3) {
+      const r = ((pixels[i] * rg) - stretchLow) * scale;
+      const g = ((pixels[i + 1] * gg) - stretchLow) * scale;
+      const b = ((pixels[i + 2] * bg) - stretchLow) * scale;
+      out[i] = r < 0 ? 0 : r > 255 ? 255 : Math.round(r);
+      out[i + 1] = g < 0 ? 0 : g > 255 ? 255 : Math.round(g);
+      out[i + 2] = b < 0 ? 0 : b > 255 ? 255 : Math.round(b);
+    }
+    return out;
+  }
+
+  async analyzeColorAndMorphology(imageBuffer) {
+    const targetW = 300;
+    const targetH = 300;
+    const { data: pixels } = await sharp(imageBuffer)
+      .rotate()
+      .resize(targetW, targetH, { fit: 'fill' })
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const morphRaw = this.analyzePixelBuffer(pixels, targetW, targetH, true);
+    const balancedBuf = this.balanceRawBuffer(pixels, morphRaw.lighting);
+    const morphBalanced = this.analyzePixelBuffer(balancedBuf, targetW, targetH, false);
+
+    return { morphRaw, morphBalanced };
   }
 
   rgbBufferToFloatTensor(rawBuf) {
@@ -315,22 +370,12 @@ class CropDiagnosisEngine {
     return new ort.Tensor('float32', data, [1, 3, 224, 224]);
   }
 
-  async preprocessTensors(imageBuffer, useExtremeEnhancement = false) {
-    // Always normalize EXIF orientation first via .rotate()
+  async preprocessTensors(imageBuffer, lighting) {
     const baseImg = sharp(imageBuffer).rotate();
     const meta = await baseImg.metadata();
     const w = meta.width || 224;
     const h = meta.height || 224;
 
-    // Scale A: Full View (224x224 bicubic)
-    const rawFull = await sharp(imageBuffer)
-      .rotate()
-      .resize(224, 224, { fit: 'fill', kernel: 'cubic' })
-      .removeAlpha()
-      .raw()
-      .toBuffer();
-
-    // Scale B: Center Crop (224x224 from 256 shortest edge)
     let newW, newH;
     if (w < h) {
       newW = 256;
@@ -342,6 +387,13 @@ class CropDiagnosisEngine {
     const left = Math.max(0, Math.floor((newW - 224) / 2));
     const top = Math.max(0, Math.floor((newH - 224) / 2));
 
+    const rawFull = await sharp(imageBuffer)
+      .rotate()
+      .resize(224, 224, { fit: 'fill', kernel: 'cubic' })
+      .removeAlpha()
+      .raw()
+      .toBuffer();
+
     const rawCrop = await sharp(imageBuffer)
       .rotate()
       .resize(newW, newH, { kernel: 'cubic' })
@@ -350,27 +402,56 @@ class CropDiagnosisEngine {
       .raw()
       .toBuffer();
 
-    const tensors = {
+    // Scale C: Flipped view with adaptive Gray-World + luminance stretch if extreme lighting/tint
+    let enhancedPipe = sharp(imageBuffer).rotate();
+    if (lighting?.isExtremeCondition) {
+      const { rMean, gMean, bMean } = lighting;
+      const gray = (rMean + gMean + bMean) / 3.0;
+      const clampG = v => Math.max(0.75, Math.min(1.35, v));
+      enhancedPipe = enhancedPipe
+        .linear(
+          [clampG(gray / (rMean || 1)), clampG(gray / (gMean || 1)), clampG(gray / (bMean || 1))],
+          [0, 0, 0]
+        )
+        .normalise();
+    }
+    const rawEnhFlip = await enhancedPipe
+      .flop()
+      .resize(newW, newH, { kernel: 'cubic' })
+      .extract({ left, top, width: 224, height: 224 })
+      .removeAlpha()
+      .raw()
+      .toBuffer();
+
+    return {
       tensorFull: this.rgbBufferToFloatTensor(rawFull),
       tensorCrop: this.rgbBufferToFloatTensor(rawCrop),
-      tensorEnhanced: null
+      tensorEnhFlip: this.rgbBufferToFloatTensor(rawEnhFlip),
+      rawCrop
     };
+  }
 
-    // Scale C: Contrast & Illumination Normalized + Mirror View for Extreme Field Conditions
-    if (useExtremeEnhancement) {
-      const rawEnhanced = await sharp(imageBuffer)
-        .rotate()
-        .normalise() // Dynamic histogram stretch fixes dark shade, fog haze, and glare washout
-        .flop()      // Horizontal TTA symmetry boost
-        .resize(newW, newH, { kernel: 'cubic' })
-        .extract({ left, top, width: 224, height: 224 })
-        .removeAlpha()
-        .raw()
-        .toBuffer();
-      tensors.tensorEnhanced = this.rgbBufferToFloatTensor(rawEnhanced);
+  rotateRgb224(buf, deg) {
+    const out = Buffer.allocUnsafe(224 * 224 * 3);
+    for (let y = 0; y < 224; y++) {
+      for (let x = 0; x < 224; x++) {
+        const srcIdx = (y * 224 + x) * 3;
+        let dx, dy;
+        if (deg === 90) {
+          dx = 223 - y;
+          dy = x;
+        } else {
+          // 270 degrees
+          dx = y;
+          dy = 223 - x;
+        }
+        const dstIdx = (dy * 224 + dx) * 3;
+        out[dstIdx] = buf[srcIdx];
+        out[dstIdx + 1] = buf[srcIdx + 1];
+        out[dstIdx + 2] = buf[srcIdx + 2];
+      }
     }
-
-    return tensors;
+    return out;
   }
 
   dotProduct(a, b) {
@@ -381,35 +462,66 @@ class CropDiagnosisEngine {
     return sum;
   }
 
+  softmaxProbs(arr, temp = 1.0) {
+    let mx = -Infinity;
+    for (let i = 0; i < arr.length; i++) if (arr[i] > mx) mx = arr[i];
+    let sum = 0;
+    const out = new Float32Array(arr.length);
+    for (let i = 0; i < arr.length; i++) {
+      out[i] = Math.exp((arr[i] - mx) / temp);
+      sum += out[i];
+    }
+    for (let i = 0; i < arr.length; i++) out[i] /= sum;
+    return out;
+  }
+
+  computeTrainedScores(featNorm) {
+    const trainedScores = {};
+    let maxCos = -1.0;
+    if (this.hasTrainedHead && this.headWeights) {
+      this.trainedClasses.forEach((k, idx) => {
+        trainedScores[k] = this.dotProduct(this.headWeights[idx], featNorm) + this.headBiases[idx];
+        const cos = this.dotProduct(this.headNormWeights[idx], featNorm);
+        if (cos > maxCos) maxCos = cos;
+      });
+    }
+    return { trainedScores, maxCos };
+  }
+
   async predict(imageBuffer, cropFilter = 'Auto') {
     const startTime = Date.now();
     await this.init();
 
-    // 1. Colorimetry, Extreme Lighting Telemetry & Morphology
-    const morph = await this.analyzeColorAndMorphology(imageBuffer);
+    // 1. Raw + Gray-World Contrast-Recovered Colorimetry & Morphology
+    const { morphRaw, morphBalanced } = await this.analyzeColorAndMorphology(imageBuffer);
+    const morph = morphRaw;
     const extremeActive = morph.lighting.isExtremeCondition;
 
-    // Reject outright empty/non-plant frames (< 1.5%), check DINOv2 rescue if borderline (1.5%..5.5%)
-    const buildUnclearResponse = () => ({
+    const effectiveGreenPct = Math.max(morph.greenPct, morphBalanced.greenPct);
+    const effectivePinkPct = Math.max(morph.salmonPinkPct, morphBalanced.salmonPinkPct);
+    const effectiveYellowPct = morph.lighting.hasColorCast ? morphBalanced.yellowPct : morph.yellowPct;
+    const effectiveBrownPct = morph.lighting.hasColorCast ? morphBalanced.brownPct : morph.brownPct;
+
+    const buildRejectionResponse = (reasonText) => ({
       status: 'unclear_leaf',
-      message: 'No clear tomato or potato foliage, tuber, or fruit detected. Please focus your camera directly on the leaf blade, stem, tuber, or fruit.',
-      crop: ['Tomato', 'Potato'].includes(cropFilter) ? cropFilter : 'Tomato',
-      vegetation_percentage: Math.round(morph.vegetationRatio * 10) / 10,
+      message: reasonText || 'Not a tomato or potato leaf detected. This system exclusively diagnoses Tomato & Potato foliage and crop specimens. Please upload a clear close-up leaf photo.',
+      crop: 'None',
+      vegetation_percentage: Math.round(morph.foliarRatio * 10) / 10,
       prediction: {
         disease_id: 'unclear_leaf',
-        name: 'No Clear Tomato / Potato Leaf, Tuber, or Fruit Detected',
-        hindi_name: 'स्पष्ट टमाटर या आलू की पत्ती/कंद/फल नहीं मिला',
+        name: 'Not a Tomato or Potato Leaf',
+        hindi_name: 'यह टमाटर या आलू की पत्ती नहीं है',
         confidence_percent: 0.0,
         category: 'Validation',
         severity: 'Low',
-        badge_color: '#64748b',
-        pathogen: 'None',
-        voice_summary: 'कृपया कैमरे को सीधे टमाटर या आलू की पत्ती, कंद अथवा फल पर केंद्रित करें।'
+        badge_color: '#b91c1c',
+        pathogen: 'Outside Supported Domain (Tomato & Potato Only)',
+        voice_summary: 'यह फोटो टमाटर या आलू की पत्ती की नहीं है। कृपया केवल टमाटर या आलू की पत्ती की स्पष्ट फोटो अपलोड करें।'
       },
       treatment_plan: {
-        organic_remedies: ['Ensure the leaf, stem, or tuber fills the frame cleanly.'],
+        organic_remedies: ['Point the camera directly at a Tomato or Potato leaf blade covering most of the frame.'],
         chemical_treatments: [],
-        preventive_measures: ['Align the affected crop area clearly inside the frame.'],
+        preventive_measures: ['Only Tomato and Potato crop leaves/specimens are supported for pathology diagnosis.'],
         fertilizer_recommendation: ''
       },
       spectral_deficiency_analysis: {
@@ -419,65 +531,134 @@ class CropDiagnosisEngine {
         suspected_deficiencies: []
       },
       top_predictions: [],
-      metadata: { inference_time_ms: Date.now() - startTime }
+      metadata: {
+        inference_time_ms: Date.now() - startTime,
+        extreme_condition_mode: extremeActive,
+        lighting_summary: morph.lighting
+      }
     });
 
-    if (morph.vegetationRatio < 1.5 && morph.whiteSporePct < 15.0) {
-      return buildUnclearResponse();
+    // Reject completely flat/blank images immediately
+    if (morph.lighting.contrastSpan < 10) {
+      return buildRejectionResponse();
     }
 
-    // 2. Multi-Scale DINOv2 Feature Extraction (with Scale C adaptive boost for extreme conditions)
-    const { tensorFull, tensorCrop, tensorEnhanced } = await this.preprocessTensors(imageBuffer, extremeActive);
+    // 2. Multi-Scale DINOv2 Feature Extraction (Full + Crop + Flipped/Balanced Scale C)
+    const { tensorFull, tensorCrop, tensorEnhFlip, rawCrop } = await this.preprocessTensors(imageBuffer, morph.lighting);
     const inputName = this.session.inputNames[0];
+    const [outLogitKey, outFeatKey] = this.session.outputNames;
 
-    const outFull = await this.session.run({ [inputName]: tensorFull });
-    const outCrop = await this.session.run({ [inputName]: tensorCrop });
+    const [outFull, outCrop, outEnh] = await Promise.all([
+      this.session.run({ [inputName]: tensorFull }),
+      this.session.run({ [inputName]: tensorCrop }),
+      this.session.run({ [inputName]: tensorEnhFlip })
+    ]);
 
-    const logitsFull = outFull[this.session.outputNames[0]].data;
-    const featFull = outFull[this.session.outputNames[1]].data;
-    const logitsCrop = outCrop[this.session.outputNames[0]].data;
-    const featCrop = outCrop[this.session.outputNames[1]].data;
+    const wMain = extremeActive ? 0.30 : 0.36;
+    const wCrop = extremeActive ? 0.30 : 0.36;
+    const wEnh = extremeActive ? 0.40 : 0.28;
 
-    let logitsEnh = null;
-    let featEnh = null;
-    if (tensorEnhanced) {
-      const outEnh = await this.session.run({ [inputName]: tensorEnhanced });
-      logitsEnh = outEnh[this.session.outputNames[0]].data;
-      featEnh = outEnh[this.session.outputNames[1]].data;
+    const mergeAndNormalize = (runs) => {
+      const feat = new Float32Array(768);
+      const logits38 = new Float32Array(38);
+      let wSum = 0;
+      for (const { out, weight } of runs) {
+        const fData = out[outFeatKey].data;
+        const lData = out[outLogitKey].data;
+        for (let i = 0; i < 768; i++) feat[i] += fData[i] * weight;
+        for (let i = 0; i < 38; i++) logits38[i] += lData[i] * weight;
+        wSum += weight;
+      }
+      if (wSum > 0) {
+        for (let i = 0; i < 768; i++) feat[i] /= wSum;
+        for (let i = 0; i < 38; i++) logits38[i] /= wSum;
+      }
+      let normSq = 0;
+      for (let i = 0; i < 768; i++) normSq += feat[i] * feat[i];
+      const rawFeatNorm = Math.sqrt(normSq);
+      const norm = rawFeatNorm + 1e-7;
+      for (let i = 0; i < 768; i++) feat[i] /= norm;
+      return { featNorm: feat, rawFeatNorm, baseLogits38: logits38 };
+    };
+
+    const runList = [
+      { out: outFull, weight: wMain },
+      { out: outCrop, weight: wCrop },
+      { out: outEnh, weight: wEnh }
+    ];
+    let { featNorm, rawFeatNorm, baseLogits38 } = mergeAndNormalize(runList);
+    let { trainedScores, maxCos } = this.computeTrainedScores(featNorm);
+
+    // 2B. Adaptive Multi-Rotation TTA (90° & 270°) if leaf prediction margin is close/rotated
+    const sortedTrainedVals = Object.values(trainedScores).sort((a, b) => b - a);
+    const trainedMargin = (sortedTrainedVals[0] ?? 0) - (sortedTrainedVals[1] ?? 0);
+    if (effectiveGreenPct >= 8.0 && (trainedMargin < 1.35 || (sortedTrainedVals[0] ?? 0) < 2.6)) {
+      const t90 = this.rgbBufferToFloatTensor(this.rotateRgb224(rawCrop, 90));
+      const t270 = this.rgbBufferToFloatTensor(this.rotateRgb224(rawCrop, 270));
+      const [out90, out270] = await Promise.all([
+        this.session.run({ [inputName]: t90 }),
+        this.session.run({ [inputName]: t270 })
+      ]);
+      const mergedRot = mergeAndNormalize([
+        ...runList,
+        { out: out90, weight: 0.25 },
+        { out: out270, weight: 0.25 }
+      ]);
+      featNorm = mergedRot.featNorm;
+      rawFeatNorm = mergedRot.rawFeatNorm;
+      baseLogits38 = mergedRot.baseLogits38;
+      ({ trainedScores, maxCos } = this.computeTrainedScores(featNorm));
     }
 
-    const scaleWeightMain = tensorEnhanced ? 0.40 : 0.50;
-    const scaleWeightEnh = tensorEnhanced ? 0.20 : 0.0;
+    // 3. Strict Tomato & Potato Out-of-Distribution (OOD) Verification Gate
+    // Blocks humans, rooms, random objects, white walls, and non-tomato/potato crops.
+    const probs38 = this.softmaxProbs(baseLogits38, 1.0);
+    const pSol = SOLANACEAE_38_INDICES.reduce((acc, idx) => acc + probs38[idx], 0);
+    const pPM = POWDERY_MILDEW_38_INDICES.reduce((acc, idx) => acc + probs38[idx], 0);
+    const solMax = Math.max(...SOLANACEAE_38_INDICES.map(idx => baseLogits38[idx]));
+    const pmMax = Math.max(...POWDERY_MILDEW_38_INDICES.map(idx => baseLogits38[idx]));
 
-    // Multi-scale normalized embedding (768-dim)
-    const featNorm = new Float32Array(768);
-    let normSq = 0;
-    for (let i = 0; i < 768; i++) {
-      const v = featFull[i] * scaleWeightMain + featCrop[i] * scaleWeightMain + (featEnh ? featEnh[i] * scaleWeightEnh : 0);
-      featNorm[i] = v;
-      normSq += v * v;
-    }
-    const norm = Math.sqrt(normSq) + 1e-7;
-    for (let i = 0; i < 768; i++) {
-      featNorm[i] /= norm;
+    const maxLeafEvidence = Math.max(...Object.values(trainedScores), -10);
+    const isGenuineLeaf =
+      effectiveGreenPct >= 2.8 &&
+      maxCos >= 0.140 &&
+      (rawFeatNorm < 61.5 || pSol >= 0.85) &&
+      ((pSol >= 0.52 && solMax >= 8.5) || (pPM >= 0.55 && pmMax >= 10.0 && effectiveGreenPct >= 14.0));
+
+    // Strict tuber/fruit gate: only accepts authentic tuber/fruit pathology (never human skin)
+    const hasTuberOrFruitContrast =
+      (morphBalanced.brownPct + effectivePinkPct >= 12.0) ||
+      morphBalanced.corkyBrownPct >= 12.0 ||
+      morphBalanced.pitchBlackPct >= 10.0 ||
+      morphBalanced.ripeRedPct >= 12.0;
+
+    const isGenuineTuberOrFruit =
+      effectiveGreenPct < 10.0 &&
+      pSol >= 0.82 &&
+      solMax >= 12.0 &&
+      rawFeatNorm < 59.5 &&
+      hasTuberOrFruitContrast;
+
+    if (!isGenuineLeaf && !isGenuineTuberOrFruit) {
+      return buildRejectionResponse();
     }
 
-    const baseLogits38 = new Float32Array(38);
-    for (let i = 0; i < 38; i++) {
-      baseLogits38[i] = logitsFull[i] * scaleWeightMain + logitsCrop[i] * scaleWeightMain + (logitsEnh ? logitsEnh[i] * scaleWeightEnh : 0);
-    }
-
-    // Neural validation check for dim/borderline uploads
+    // 4. Crop Determination (Tomato vs Potato)
     const dinoPotatoMax = Math.max(baseLogits38[20], baseLogits38[21], baseLogits38[22]);
     const dinoTomatoIndices = [28, 29, 30, 31, 32, 33, 34, 35, 36, 37];
     const dinoTomatoMax = Math.max(...dinoTomatoIndices.map(idx => baseLogits38[idx]));
-    const maxPlantActivation = Math.max(dinoPotatoMax, dinoTomatoMax);
+    const trainedPotatoMax = Math.max(
+      trainedScores['Potato___Early_blight'] ?? -10,
+      trainedScores['Potato___Late_blight'] ?? -10,
+      trainedScores['Potato___healthy'] ?? -10
+    );
+    const trainedTomatoMax = Math.max(
+      ...Object.entries(trainedScores)
+        .filter(([k]) => k.startsWith('Tomato___'))
+        .map(([, v]) => v),
+      -10
+    );
 
-    if (morph.vegetationRatio < 5.0 && maxPlantActivation < 3.0) {
-      return buildUnclearResponse();
-    }
-
-    // 3. Crop Determination (Tomato vs Potato)
     let chosenCrop = 'Tomato';
     const cropFilterNorm = (cropFilter || 'auto').trim().toLowerCase();
     if (['tomato', 'टमाटर'].includes(cropFilterNorm)) {
@@ -485,32 +666,37 @@ class CropDiagnosisEngine {
     } else if (['potato', 'आलू'].includes(cropFilterNorm)) {
       chosenCrop = 'Potato';
     } else {
-      const isHarvestedTuber = (morph.greenPct < 10.0) && (morph.salmonPinkPct > 7.5 || (morph.tuberSkinPct > 10.0 && morph.ripeRedPct < 4.0) || morph.centerCreamPct > 15.0);
-      const isTomatoFruit = (morph.greenPct < 10.0) && (morph.ripeRedPct > 4.0 && morph.ripeRedPct > morph.salmonPinkPct);
+      const strongFoliarSignal = effectiveGreenPct >= 14.0 ||
+        (effectiveGreenPct >= 3.0 && effectivePinkPct < 6.0 && (dinoPotatoMax > 13.5 || maxLeafEvidence > 2.2));
+      const isTomatoFruit =
+        !strongFoliarSignal &&
+        morph.ripeRedPct > 9.0 &&
+        morphBalanced.ripeRedPct > 8.0 &&
+        morphBalanced.greenPct < 10.0 &&
+        dinoPotatoMax < 12.0;
+
+      const isHarvestedTuber =
+        !strongFoliarSignal &&
+        !isTomatoFruit &&
+        effectiveGreenPct < 10.0 &&
+        (effectivePinkPct > 7.5 || (morphBalanced.tuberSkinPct > 12.0 && morphBalanced.ripeRedPct < 6.0) || morphBalanced.centerCreamPct > 15.0);
 
       if (isTomatoFruit) {
         chosenCrop = 'Tomato';
       } else if (isHarvestedTuber) {
         chosenCrop = 'Potato';
       } else {
-        let cropLogit = 0.0;
-        if (this.hasTrainedHead && this.cropWeights) {
-          cropLogit = this.dotProduct(this.cropWeights[0], featNorm) + this.cropBiases[0];
-        } else {
-          cropLogit = dinoTomatoMax >= dinoPotatoMax ? 1.0 : -1.0;
-        }
-        chosenCrop = (dinoPotatoMax > dinoTomatoMax + 1.0 || cropLogit < -0.4) ? 'Potato' : 'Tomato';
+        const cropLogit = (this.hasTrainedHead && this.cropWeights)
+          ? (this.dotProduct(this.cropWeights[0], featNorm) + this.cropBiases[0])
+          : (dinoTomatoMax >= dinoPotatoMax ? 1.0 : -1.0);
+        const potatoAdvantage = (trainedPotatoMax - trainedTomatoMax) * 0.45 + (dinoPotatoMax - dinoTomatoMax) * 0.12 - cropLogit * 0.55;
+        chosenCrop = (dinoPotatoMax > dinoTomatoMax + 0.8 || cropLogit < -0.35 || potatoAdvantage > 0.35)
+          ? 'Potato'
+          : 'Tomato';
       }
     }
 
-    // 4. Full 43-Disease Candidate Scoring Engine
-    const trainedScores = {};
-    if (this.hasTrainedHead && this.headWeights) {
-      this.trainedClasses.forEach((k, idx) => {
-        trainedScores[k] = this.dotProduct(this.headWeights[idx], featNorm) + this.headBiases[idx];
-      });
-    }
-
+    // 5. Full 43-Disease Candidate Scoring Engine
     const candidateScores = {};
 
     if (chosenCrop === 'Tomato') {
@@ -530,41 +716,39 @@ class CropDiagnosisEngine {
       for (const [key, dinoIdx] of Object.entries(tomatoKeyToDino)) {
         const tScore = trainedScores[key] || 0.0;
         const dScore = baseLogits38[dinoIdx];
-        candidateScores[key] = tScore * 1.5 + dScore * 0.5;
+        candidateScores[key] = tScore * 1.55 + dScore * 0.52;
       }
 
-      // Bacterial Speck / Spot Punctate Morphology Boost
-      if (morph.speckCount > 200 && morph.greenPct > 20.0) {
-        const speckBoost = Math.min(12.0, (morph.speckCount - 200) * 0.015 + 4.0);
+      // Bacterial Spot calibrated morphometry tie-breaker when neural head detects spotting
+      if ((trainedScores['Tomato___Bacterial_spot'] || 0) > 1.2 && morph.speckCount >= 18 && effectiveGreenPct > 20.0) {
+        const speckBoost = Math.min(3.5, (morph.speckCount - 15) * 0.03 + 1.2);
         candidateScores['Tomato___Bacterial_spot'] += speckBoost;
       }
 
-      // Powdery Mildew (Fungal spore dust detection)
-      const pmLogit = Math.max(logitsCrop[25], logitsCrop[5], baseLogits38[25], baseLogits38[5]);
-      const isPm = (pmLogit > 8.0 && morph.speckCount < 200) || (pmLogit > 3.0 && morph.whiteSporePct > 12.0 && morph.speckCount < 200);
-      candidateScores['Tomato___Powdery_mildew'] = isPm ? (pmLogit * 1.5 + 2.0) : (pmLogit - 3.5);
+      // Powdery Mildew (Cross-species fungal spore dust detection)
+      const isPm = (pmMax > 8.5 && morph.speckCount < 200) || (pmMax > 3.5 && morphBalanced.whiteSporePct > 12.0 && morph.speckCount < 200);
+      candidateScores['Tomato___Powdery_mildew'] = isPm ? (pmMax * 1.5 + 2.0) : (pmMax - 3.5);
 
       const bsScore = candidateScores['Tomato___Bacterial_spot'] || 0.0;
       const lbScore = candidateScores['Tomato___Late_blight'] || 0.0;
       const ylcScore = candidateScores['Tomato___Tomato_Yellow_Leaf_Curl_Virus'] || 0.0;
       const mvScore = candidateScores['Tomato___Tomato_mosaic_virus'] || 0.0;
-      const tsScore = candidateScores['Tomato___Target_Spot'] || 0.0;
       const lmScore = candidateScores['Tomato___Leaf_Mold'] || 0.0;
       const maxFoliar = Math.max(...Object.values(candidateScores));
       const trainedUncertain = maxFoliar < 3.5;
 
-      // Fruit Conditions (Ripe/Ripening Tomato Fruits)
-      const isFruitCloseUp = morph.ripeRedPct > 5.0 && morph.greenPct < 15.0;
+      // Tomato Fruit Conditions (when confirmed fruit closeup, not foliar leaf)
+      const isFruitCloseUp = morphBalanced.ripeRedPct > 8.0 && morph.ripeRedPct > 6.0 && effectiveGreenPct < 12.0;
       if (isFruitCloseUp) {
         if (morph.bottomDarkPct > morph.upperDarkPct * 1.45 && morph.bottomDarkPct > 5.0) {
           candidateScores['Tomato___Blossom_end_rot'] = maxFoliar + 12.0;
           candidateScores['Tomato___Anthracnose'] = maxFoliar + 3.0;
           candidateScores['Tomato___Bacterial_canker'] = maxFoliar + 1.0;
-        } else if (morph.upperDarkPct > 4.0 || morph.corkyBrownPct > 5.0) {
+        } else if (morph.upperDarkPct > 4.0 || morphBalanced.corkyBrownPct > 5.0) {
           candidateScores['Tomato___Anthracnose'] = maxFoliar + 11.0;
           candidateScores['Tomato___Blossom_end_rot'] = maxFoliar + 2.0;
           candidateScores['Tomato___Bacterial_canker'] = maxFoliar + 1.0;
-        } else if (morph.speckCount > 15 && morph.whiteSporePct > 3.0) {
+        } else if (morph.speckCount > 15 && morphBalanced.whiteSporePct > 3.0) {
           candidateScores['Tomato___Bacterial_canker'] = maxFoliar + 10.0;
           candidateScores['Tomato___Anthracnose'] = maxFoliar + 2.0;
           candidateScores['Tomato___Blossom_end_rot'] = maxFoliar + 1.0;
@@ -574,29 +758,29 @@ class CropDiagnosisEngine {
           candidateScores['Tomato___Bacterial_canker'] = 6.0;
         }
       } else {
-        candidateScores['Tomato___Blossom_end_rot'] = maxFoliar - 7.5;
-        candidateScores['Tomato___Anthracnose'] = maxFoliar - 6.5;
-        candidateScores['Tomato___Bacterial_canker'] = (trainedUncertain && morph.speckCount < 45 && morph.brownPct > 18.0 && morph.highEdgePct > 18.0)
+        candidateScores['Tomato___Blossom_end_rot'] = maxFoliar - 8.5;
+        candidateScores['Tomato___Anthracnose'] = maxFoliar - 7.5;
+        candidateScores['Tomato___Bacterial_canker'] = (trainedUncertain && morph.speckCount < 45 && effectiveBrownPct > 18.0 && morph.highEdgePct > 18.0)
           ? (bsScore + 2.5)
-          : (maxFoliar - 6.5);
+          : (maxFoliar - 7.5);
       }
 
-      // Secondary Foliar & Vascular Conditions (Engaged cleanly when trained foliage classes are uncertain)
-      candidateScores['Tomato___Gray_mold'] = (trainedUncertain && morph.grayMoldPct > 22.0 && morph.brownPct > 8.0 && morph.speckCount < 140)
+      // Secondary Foliar & Vascular Conditions
+      candidateScores['Tomato___Gray_mold'] = (trainedUncertain && morphBalanced.grayMoldPct > 22.0 && effectiveBrownPct > 8.0 && morph.speckCount < 140)
         ? (lmScore + 3.0)
-        : (maxFoliar - 6.5);
+        : (maxFoliar - 7.5);
 
-      candidateScores['Tomato___Tomato_spotted_wilt_virus'] = (morph.purpleBronzePct > 12.0 && morph.greenPct > 15.0 && maxFoliar < 5.0)
-        ? (Math.max(mvScore, ylcScore) + (morph.purpleBronzePct - 10.0) * 0.5)
-        : (maxFoliar - 6.5);
+      candidateScores['Tomato___Tomato_spotted_wilt_virus'] = (morphBalanced.purpleBronzePct > 12.0 && effectiveGreenPct > 15.0 && maxFoliar < 4.5)
+        ? (Math.max(mvScore, ylcScore) + (morphBalanced.purpleBronzePct - 10.0) * 0.5)
+        : (maxFoliar - 7.5);
 
-      const isStrongYellowWilt = (trainedUncertain && morph.yellowPct > 36.0 && morph.greenPct > 15.0 && morph.speckCount < 60);
-      candidateScores['Tomato___Fusarium_wilt'] = isStrongYellowWilt ? (maxFoliar + 3.5) : (maxFoliar - 6.5);
-      candidateScores['Tomato___Verticillium_wilt'] = (isStrongYellowWilt && morph.brownPct > 10.0) ? (maxFoliar + 2.5) : (maxFoliar - 6.8);
+      const isStrongYellowWilt = (trainedUncertain && effectiveYellowPct > 36.0 && effectiveGreenPct > 15.0 && morph.speckCount < 60);
+      candidateScores['Tomato___Fusarium_wilt'] = isStrongYellowWilt ? (maxFoliar + 3.5) : (maxFoliar - 7.5);
+      candidateScores['Tomato___Verticillium_wilt'] = (isStrongYellowWilt && effectiveBrownPct > 10.0) ? (maxFoliar + 2.5) : (maxFoliar - 7.8);
 
-      candidateScores['Tomato___Bacterial_wilt'] = (trainedUncertain && morph.greenPct > 45.0 && morph.yellowPct < 8.0 && morph.brownPct < 5.0)
+      candidateScores['Tomato___Bacterial_wilt'] = (trainedUncertain && effectiveGreenPct > 45.0 && effectiveYellowPct < 8.0 && effectiveBrownPct < 5.0)
         ? (lbScore + 2.5)
-        : (maxFoliar - 6.8);
+        : (maxFoliar - 7.8);
 
     } else {
       // POTATO DISEASES (24 Total Conditions)
@@ -609,7 +793,7 @@ class CropDiagnosisEngine {
       for (const [key, dinoIdx] of Object.entries(potatoKeyToDino)) {
         const tScore = trainedScores[key] || 0.0;
         const dScore = baseLogits38[dinoIdx];
-        candidateScores[key] = tScore * 1.5 + dScore * 0.5;
+        candidateScores[key] = tScore * 1.55 + dScore * 0.52;
       }
 
       const ebScore = candidateScores['Potato___Early_blight'] || 0.0;
@@ -617,22 +801,25 @@ class CropDiagnosisEngine {
       const hScore = candidateScores['Potato___healthy'] || 0.0;
       const maxFoliarPot = Math.max(ebScore, lbScore, hScore);
 
-      const isTuber = (morph.greenPct < 10.0) || (morph.tuberSkinPct > 38.0) || (morph.salmonPinkPct > 7.5) || (morph.centerCreamPct > 18.0);
+      // Guard strictly against treating foggy/warm foliage as a potato tuber
+      const isFoliageClear = effectiveGreenPct >= 14.0 ||
+        (effectiveGreenPct >= 3.0 && effectivePinkPct < 6.0 && (trainedPotatoMax >= 2.2 || dinoPotatoMax >= 13.5));
+      const isTuber = !isFoliageClear && (effectiveGreenPct < 10.0 && (effectivePinkPct > 7.5 || morphBalanced.tuberSkinPct > 30.0 || morphBalanced.centerCreamPct > 18.0));
 
       if (isTuber) {
         candidateScores['Potato___Early_blight'] = ebScore * 0.25;
         candidateScores['Potato___Late_blight'] = lbScore * 0.25;
-        candidateScores['Potato___healthy'] = (morph.brownPct < 3.5 && morph.pitchBlackPct < 2.5 && morph.salmonPinkPct < 4.0 && morph.corkyBrownPct < 4.5 && morph.whiteSporePct < 5.0)
+        candidateScores['Potato___healthy'] = (effectiveBrownPct < 3.5 && morphBalanced.pitchBlackPct < 2.5 && effectivePinkPct < 4.0 && morphBalanced.corkyBrownPct < 4.5 && morphBalanced.whiteSporePct < 5.0)
           ? Math.max(hScore, 9.5)
           : (hScore * 0.25);
 
-        candidateScores['Potato___Pink_rot'] = (morph.salmonPinkPct > 7.5)
-          ? Math.max(maxFoliarPot, 6.0) + 8.0 + (morph.salmonPinkPct - 7.5) * 0.35
+        candidateScores['Potato___Pink_rot'] = (effectivePinkPct > 7.5)
+          ? Math.max(maxFoliarPot, 6.0) + 9.0 + (effectivePinkPct - 7.5) * 0.35
           : -3.0;
 
-        if (morph.centerCreamPct > 22.0 && morph.centerBrownPct > 5.0 && morph.salmonPinkPct < 6.0) {
-          candidateScores['Potato___PMTV'] = 9.0 + morph.centerBrownPct * 0.2;
-          candidateScores['Potato___TRV'] = 8.2 + morph.centerBrownPct * 0.15;
+        if (morphBalanced.centerCreamPct > 22.0 && morphBalanced.centerBrownPct > 5.0 && effectivePinkPct < 6.0) {
+          candidateScores['Potato___PMTV'] = 9.0 + morphBalanced.centerBrownPct * 0.2;
+          candidateScores['Potato___TRV'] = 8.2 + morphBalanced.centerBrownPct * 0.15;
           candidateScores['Potato___Brown_rot'] = 7.5;
           candidateScores['Potato___Ring_rot'] = 7.0;
         } else {
@@ -642,73 +829,64 @@ class CropDiagnosisEngine {
           candidateScores['Potato___Ring_rot'] = -3.0;
         }
 
-        candidateScores['Potato___Watery_wound_rot'] = (morph.centerCreamPct > 12.0 && morph.grayMoldPct > 18.0 && morph.salmonPinkPct < 6.0) ? 9.2 : -3.0;
-        candidateScores['Potato___Black_scurf'] = (morph.pitchBlackPct > 6.0 && morph.salmonPinkPct < 6.0) ? (8.5 + morph.pitchBlackPct * 0.35) : -2.5;
-        candidateScores['Potato___Common_scab'] = (morph.corkyBrownPct > 10.0 && morph.highEdgePct > 11.0 && morph.salmonPinkPct < 6.0) ? (8.0 + morph.corkyBrownPct * 0.30) : -2.0;
-        candidateScores['Potato___Powdery_scab'] = (morph.corkyBrownPct > 8.5 && morph.brownPct > 10.0 && morph.tinyPimpleCount > 25) ? (8.2 + morph.corkyBrownPct * 0.25) : -2.5;
-        candidateScores['Potato___Dry_rot'] = (morph.whiteSporePct > 7.0 && morph.brownPct > 9.0) ? (8.8 + morph.whiteSporePct * 0.25) : -2.4;
-        candidateScores['Potato___Gangrene'] = (morph.brownPct > 14.0 && morph.pitchBlackPct > 5.0 && morph.whiteSporePct < 5.0) ? 8.0 : -2.8;
-        candidateScores['Potato___Silver_scurf'] = (morph.silverySheenPct > 16.0 && morph.brownPct < 5.0 && morph.pitchBlackPct < 3.0) ? (8.6 + morph.silverySheenPct * 0.2) : -2.8;
-        candidateScores['Potato___Skin_spot'] = (morph.tinyPimpleCount > 35 && morph.brownPct < 10.0) ? 7.8 : -3.2;
-        candidateScores['Potato___Black_dot'] = (morph.silverySheenPct > 10.0 && morph.tinyPimpleCount > 25) ? 7.5 : -3.2;
-        candidateScores['Potato___Violet_root_rot'] = (morph.purpleBronzePct > 12.0 && morph.salmonPinkPct < 6.0) ? (9.5 + morph.purpleBronzePct * 0.3) : -4.0;
-        candidateScores['Potato___Wart_disease'] = (morph.pitchBlackPct > 15.0 && morph.highEdgePct > 25.0) ? 9.2 : -4.0;
+        candidateScores['Potato___Watery_wound_rot'] = (morphBalanced.centerCreamPct > 12.0 && morphBalanced.grayMoldPct > 18.0 && effectivePinkPct < 6.0) ? 9.2 : -3.0;
+        candidateScores['Potato___Black_scurf'] = (morphBalanced.pitchBlackPct > 6.0 && effectivePinkPct < 6.0) ? (8.5 + morphBalanced.pitchBlackPct * 0.35) : -2.5;
+        candidateScores['Potato___Common_scab'] = (morphBalanced.corkyBrownPct > 10.0 && morph.highEdgePct > 11.0 && effectivePinkPct < 6.0) ? (8.0 + morphBalanced.corkyBrownPct * 0.30) : -2.0;
+        candidateScores['Potato___Powdery_scab'] = (morphBalanced.corkyBrownPct > 8.5 && effectiveBrownPct > 10.0 && morph.tinyPimpleCount > 25) ? (8.2 + morphBalanced.corkyBrownPct * 0.25) : -2.5;
+        candidateScores['Potato___Dry_rot'] = (morphBalanced.whiteSporePct > 7.0 && effectiveBrownPct > 9.0 && effectivePinkPct < 6.0) ? (8.8 + morphBalanced.whiteSporePct * 0.25) : -2.4;
+        candidateScores['Potato___Gangrene'] = (effectiveBrownPct > 14.0 && morphBalanced.pitchBlackPct > 5.0 && morphBalanced.whiteSporePct < 5.0 && effectivePinkPct < 6.0) ? 8.0 : -2.8;
+        candidateScores['Potato___Silver_scurf'] = (morphBalanced.silverySheenPct > 16.0 && effectiveBrownPct < 5.0 && morphBalanced.pitchBlackPct < 3.0) ? (8.6 + morphBalanced.silverySheenPct * 0.2) : -2.8;
+        candidateScores['Potato___Skin_spot'] = (morph.tinyPimpleCount > 35 && effectiveBrownPct < 10.0) ? 7.8 : -3.2;
+        candidateScores['Potato___Black_dot'] = (morphBalanced.silverySheenPct > 10.0 && morph.tinyPimpleCount > 25) ? 7.5 : -3.2;
+        candidateScores['Potato___Violet_root_rot'] = (morphBalanced.purpleBronzePct > 12.0 && effectivePinkPct < 6.0) ? (9.5 + morphBalanced.purpleBronzePct * 0.3) : -4.0;
+        candidateScores['Potato___Wart_disease'] = (morphBalanced.pitchBlackPct > 15.0 && morph.highEdgePct > 25.0) ? 9.2 : -4.0;
 
         candidateScores['Potato___Blackleg'] = -3.5;
         candidateScores['Potato___PLRV'] = -6.0;
         candidateScores['Potato___PVY'] = -6.0;
         candidateScores['Potato___Mosaic_virus'] = -6.0;
         candidateScores['Potato___Verticillium_wilt'] = -6.0;
-
       } else {
         const potUncertain = maxFoliarPot < 3.5;
-        candidateScores['Potato___Pink_rot'] = maxFoliarPot - 7.5;
-        candidateScores['Potato___Common_scab'] = maxFoliarPot - 7.5;
-        candidateScores['Potato___Black_scurf'] = maxFoliarPot - 7.5;
-        candidateScores['Potato___Powdery_scab'] = maxFoliarPot - 7.5;
-        candidateScores['Potato___Dry_rot'] = maxFoliarPot - 7.5;
-        candidateScores['Potato___Silver_scurf'] = maxFoliarPot - 7.5;
-        candidateScores['Potato___Skin_spot'] = maxFoliarPot - 7.5;
-        candidateScores['Potato___Gangrene'] = maxFoliarPot - 7.5;
-        candidateScores['Potato___Watery_wound_rot'] = maxFoliarPot - 7.5;
-        candidateScores['Potato___Brown_rot'] = maxFoliarPot - 6.5;
-        candidateScores['Potato___Ring_rot'] = maxFoliarPot - 6.5;
-        candidateScores['Potato___Black_dot'] = maxFoliarPot - 6.5;
-        candidateScores['Potato___PMTV'] = maxFoliarPot - 7.0;
-        candidateScores['Potato___TRV'] = maxFoliarPot - 7.0;
-        candidateScores['Potato___Violet_root_rot'] = maxFoliarPot - 7.5;
-        candidateScores['Potato___Wart_disease'] = maxFoliarPot - 7.5;
+        for (const k of [
+          'Potato___Pink_rot', 'Potato___Common_scab', 'Potato___Black_scurf',
+          'Potato___Powdery_scab', 'Potato___Dry_rot', 'Potato___Silver_scurf',
+          'Potato___Skin_spot', 'Potato___Gangrene', 'Potato___Watery_wound_rot',
+          'Potato___Violet_root_rot', 'Potato___Wart_disease'
+        ]) {
+          candidateScores[k] = maxFoliarPot - 8.5;
+        }
+        candidateScores['Potato___Brown_rot'] = maxFoliarPot - 7.5;
+        candidateScores['Potato___Ring_rot'] = maxFoliarPot - 7.5;
+        candidateScores['Potato___Black_dot'] = maxFoliarPot - 7.5;
+        candidateScores['Potato___PMTV'] = maxFoliarPot - 8.0;
+        candidateScores['Potato___TRV'] = maxFoliarPot - 8.0;
 
-        candidateScores['Potato___Blackleg'] = (potUncertain && morph.bottomDarkPct > 24.0 && morph.yellowPct > 12.0 && morph.greenPct > 20.0)
+        candidateScores['Potato___Blackleg'] = (potUncertain && morph.bottomDarkPct > 24.0 && effectiveYellowPct > 12.0 && effectiveGreenPct > 20.0)
           ? (maxFoliarPot + 2.8)
-          : (maxFoliarPot - 6.5);
+          : (maxFoliarPot - 7.5);
 
-        candidateScores['Potato___PLRV'] = (potUncertain && morph.yellowPct > 24.0 && morph.purpleBronzePct > 5.0 && morph.brownPct < 8.0)
+        candidateScores['Potato___PLRV'] = (potUncertain && effectiveYellowPct > 24.0 && morphBalanced.purpleBronzePct > 5.0 && effectiveBrownPct < 8.0)
           ? (maxFoliarPot + 2.5)
-          : (maxFoliarPot - 6.5);
+          : (maxFoliarPot - 7.5);
 
-        candidateScores['Potato___PVY'] = (potUncertain && morph.yellowPct > 18.0 && morph.greenPct > 30.0 && morph.brownPct < 4.5)
+        candidateScores['Potato___PVY'] = (potUncertain && effectiveYellowPct > 18.0 && effectiveGreenPct > 30.0 && effectiveBrownPct < 4.5)
           ? (maxFoliarPot + 2.2)
-          : (maxFoliarPot - 6.5);
-        candidateScores['Potato___Mosaic_virus'] = (potUncertain && morph.yellowPct > 12.0 && morph.greenPct > 45.0 && morph.brownPct < 3.0)
+          : (maxFoliarPot - 7.5);
+        candidateScores['Potato___Mosaic_virus'] = (potUncertain && effectiveYellowPct > 12.0 && effectiveGreenPct > 45.0 && effectiveBrownPct < 3.0)
           ? (maxFoliarPot + 1.8)
-          : (maxFoliarPot - 6.5);
+          : (maxFoliarPot - 7.5);
 
-        candidateScores['Potato___Verticillium_wilt'] = (potUncertain && morph.yellowPct > 28.0 && morph.brownPct > 10.0 && morph.speckCount < 45)
+        candidateScores['Potato___Verticillium_wilt'] = (potUncertain && effectiveYellowPct > 28.0 && effectiveBrownPct > 10.0 && morph.speckCount < 45)
           ? (maxFoliarPot + 2.4)
-          : (maxFoliarPot - 6.8);
+          : (maxFoliarPot - 7.8);
       }
     }
 
-    // 5. Softmax Normalization (Temperature T = 1.5)
+    // 6. Softmax Normalization (Temperature T = 1.5)
     const keys = Object.keys(candidateScores);
     const rawScores = keys.map(k => candidateScores[k]);
-    const maxScore = Math.max(...rawScores);
-    const temp = 1.5;
-
-    const expScores = rawScores.map(s => Math.exp((s - maxScore) / temp));
-    const sumExp = expScores.reduce((acc, v) => acc + v, 0);
-    const probs = expScores.map(v => v / sumExp);
+    const probs = this.softmaxProbs(rawScores, 1.5);
 
     const sortedIndices = keys.map((_, i) => i).sort((a, b) => probs[b] - probs[a]);
     const topKey = keys[sortedIndices[0]];
@@ -746,28 +924,28 @@ class CropDiagnosisEngine {
       voice_summary: `Detected condition on ${chosenCrop}.`
     };
 
-    // 6. Spectral & Nutrient Deficiency Diagnostics
+    // 7. Spectral & Nutrient Deficiency Diagnostics (using balanced pigments in extreme conditions)
     const suspectedDeficiencies = [];
-    if (morph.yellowPct > 22.0) {
+    if (effectiveYellowPct > 22.0) {
       suspectedDeficiencies.push({
         nutrient: 'Nitrogen (N) or Iron (Fe)',
-        confidence: Math.min(95.0, Math.round(morph.yellowPct * 2.2 * 10) / 10),
-        reason: `Significant chlorosis detected (${morph.yellowPct.toFixed(1)}% yellow leaf surface). In older lower leaves this indicates Nitrogen deficit; in young terminal leaves it indicates Iron chlorosis.`,
+        confidence: Math.min(95.0, Math.round(effectiveYellowPct * 2.2 * 10) / 10),
+        reason: `Significant chlorosis detected (${effectiveYellowPct.toFixed(1)}% yellow leaf surface). In older lower leaves this indicates Nitrogen deficit; in young terminal leaves it indicates Iron chlorosis.`,
         guide: NUTRIENT_DEFICIENCY_GUIDE.nitrogen_deficiency
       });
     }
-    if (morph.brownPct > 12.0) {
+    if (effectiveBrownPct > 12.0) {
       suspectedDeficiencies.push({
         nutrient: 'Potassium (K) Marginal Scorch',
-        confidence: Math.min(92.0, Math.round(morph.brownPct * 3.5 * 10) / 10),
-        reason: `Necrotic brown spotting detected (${morph.brownPct.toFixed(1)}% necrotic surface). Correlates with Potassium deficiency or Alternaria blights.`,
+        confidence: Math.min(92.0, Math.round(effectiveBrownPct * 3.5 * 10) / 10),
+        reason: `Necrotic brown spotting detected (${effectiveBrownPct.toFixed(1)}% necrotic surface). Correlates with Potassium deficiency or Alternaria blights.`,
         guide: NUTRIENT_DEFICIENCY_GUIDE.potassium_deficiency
       });
     }
 
     const latencyMs = Date.now() - startTime;
 
-    // 7. Bilingual Pathology Insights
+    // 8. Bilingual Pathology Insights
     const phdPathology = {
       taxonomy: diseaseInfo.taxonomy || `${diseaseInfo.category} — ${diseaseInfo.pathogen}`,
       epidemiology: diseaseInfo.epidemiology || (
@@ -863,17 +1041,18 @@ class CropDiagnosisEngine {
         fertilizer_recommendation: diseaseInfo.fertilizer_recommendation || ''
       },
       spectral_deficiency_analysis: {
-        green_ratio_pct: Math.round(morph.greenPct * 10) / 10,
-        yellow_chlorosis_pct: Math.round(morph.yellowPct * 10) / 10,
-        brown_necrosis_pct: Math.round(morph.brownPct * 10) / 10,
+        green_ratio_pct: Math.round(effectiveGreenPct * 10) / 10,
+        yellow_chlorosis_pct: Math.round(effectiveYellowPct * 10) / 10,
+        brown_necrosis_pct: Math.round(effectiveBrownPct * 10) / 10,
         suspected_deficiencies: suspectedDeficiencies
       },
       metadata: {
         inference_time_ms: latencyMs,
         extreme_condition_mode: extremeActive,
         lighting_summary: morph.lighting,
-        vegetation_ratio: Math.round(morph.vegetationRatio * 10) / 10,
+        vegetation_ratio: Math.round(morph.foliarRatio * 10) / 10,
         tuber_ratio: Math.round(morph.tuberSkinPct * 10) / 10,
+        solanaceae_gate_score: Math.round(pSol * 1000) / 10,
         timestamp: Math.floor(Date.now() / 1000)
       }
     };

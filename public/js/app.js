@@ -370,23 +370,32 @@ function renderDiagnosis(data) {
 
     if (data.status === "unclear_leaf") {
         if (lightingBadge) lightingBadge.hidden = true;
+        const cropBadge = document.getElementById("disease-crop-badge");
+        if (cropBadge) {
+            cropBadge.textContent = currentLang === "hi" ? "🚫 अमान्य फोटो" : "🚫 NON-LEAF PHOTO";
+            cropBadge.style.backgroundColor = "#b91c1c";
+        }
         document.getElementById("disease-name").textContent = currentLang === "hi"
-            ? "स्पष्ट पत्ती या कंद नहीं मिला"
-            : data.prediction.name;
-        document.getElementById("disease-hindi").textContent = data.message || "कृपया पत्ते पर कैमरा केंद्रित करें।";
-        document.getElementById("disease-pathogen").textContent = `Vegetation Detected: ${data.vegetation_percentage || 0}%`;
+            ? "यह टमाटर या आलू की पत्ती नहीं है"
+            : (data.prediction?.name || "Not a Tomato or Potato Leaf");
+        document.getElementById("disease-hindi").textContent = currentLang === "hi"
+            ? "कृपया केवल टमाटर या आलू की पत्ती की स्पष्ट फोटो अपलोड करें।"
+            : (data.message || "Only Tomato & Potato leaf photos can be diagnosed.");
+        document.getElementById("disease-pathogen").textContent = currentLang === "hi"
+            ? "सत्यापन जाँच • केवल टमाटर व आलू की पत्ती मान्य"
+            : "Domain Gate • Exclusively Tomato & Potato Crops";
         document.getElementById("confidence-text").textContent = "0%";
 
         const sevBadge = document.getElementById("severity-badge");
-        sevBadge.textContent = currentLang === "hi" ? "⚠️ अस्पष्ट फोटो" : "⚠️ Unclear Photo";
+        sevBadge.textContent = currentLang === "hi" ? "⚠️ पत्ती नहीं मिली" : "⚠️ Invalid Sample";
         sevBadge.style.backgroundColor = "#b91c1c";
 
         document.getElementById("organic-remedies-list").innerHTML = `
             <div class="remedy-card" style="border-inline-start-color: #b91c1c;">
-                <div class="remedy-title">⚠️ ${currentLang === "hi" ? "फोटो निर्देश" : "Photography Guidance"}</div>
+                <div class="remedy-title">⚠️ ${currentLang === "hi" ? "यह टमाटर या आलू की पत्ती नहीं है" : "Not a Tomato or Potato Leaf"}</div>
                 <div class="remedy-detail">${currentLang === "hi"
-                    ? "अपलोड की गई फोटो में टमाटर या आलू की पत्ती/कंद साफ नहीं दिख रहा। कृपया पत्ते को फ्रेम के बीच में रखकर दोबारा फोटो लें।"
-                    : "Not enough tomato or potato leaf, stem, or tuber tissue detected. Center a clear close-up photo and try again."}</div>
+                    ? "अपलोड की गई फोटो किसी मानव, वस्तु या किसी अन्य पौधे की लगती है। कृपया केवल टमाटर या आलू की पत्ती को फ्रेम के बीच रखकर स्पष्ट फोटो लें।"
+                    : "The uploaded image does not match a Tomato or Potato leaf. Please capture a focused photo directly of a Tomato or Potato leaf blade."}</div>
             </div>
         `;
         document.getElementById("chemical-treatments-list").innerHTML = "";
@@ -398,6 +407,24 @@ function renderDiagnosis(data) {
         document.getElementById("deficiency-content").innerHTML = "";
         document.getElementById("preventive-list").innerHTML = "";
         document.getElementById("alternatives-container").innerHTML = "";
+
+        document.getElementById("spectral-bar-green").style.width = "0%";
+        document.getElementById("spectral-bar-yellow").style.width = "0%";
+        document.getElementById("spectral-bar-brown").style.width = "0%";
+        document.getElementById("spectral-green").textContent = "0%";
+        document.getElementById("spectral-yellow").textContent = "0%";
+        document.getElementById("spectral-brown").textContent = "0%";
+
+        const btnVoice = document.getElementById("btn-voice-read");
+        if (btnVoice) {
+            const msg = currentLang === "hi"
+                ? "यह टमाटर या आलू की पत्ती नहीं है। कृपया केवल टमाटर या आलू की पत्ती की फोटो अपलोड करें।"
+                : "Not a Tomato or Potato leaf. Please upload a clear Tomato or Potato leaf photo.";
+            btnVoice.onclick = () => {
+                if (isSpeaking) stopAudio();
+                else speakText(msg, currentLang === "hi" ? "hi-IN" : "en-IN");
+            };
+        }
         return;
     }
 
