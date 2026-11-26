@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="/static/css/style.css?v=7">
+  <link rel="stylesheet" href="/static/css/style.css?v=8">
 </head>
 <body class="agri-glass-app">
 
@@ -339,45 +339,50 @@
     <span class="live-indicator" aria-hidden="true"></span>
   </button>
 
-  <!-- Native Modal Dialog: Kisan AI Agri-Advisor -->
+  <!-- Native Modal Dialog: Kisan Mitra Agri-Advisor -->
   <dialog id="chat-modal" class="glass-chat-dialog" closedby="any" aria-labelledby="chat-modal-title">
     <div class="chat-dialog-shell">
       <div class="chat-dialog-header">
         <div class="advisor-profile">
           <div class="advisor-badge" aria-hidden="true">👨‍🌾</div>
           <div>
-            <h1 id="chat-modal-title" class="advisor-name" data-i18n="chat_modal_title">Kisan Mitra Advisor</h1>
-            <span class="advisor-meta" data-i18n="advisor_online">● Online • Tomato &amp; Potato Expert</span>
+            <h1 id="chat-modal-title" class="advisor-name" data-i18n="chat_modal_title">Kisan Mitra Agri-Advisor</h1>
+            <span class="advisor-meta" data-i18n="advisor_online">● Online • English &amp; हिन्दी Krishi Expert</span>
           </div>
         </div>
         <button id="chat-close" class="btn-dialog-close" type="button" aria-label="Close advisor dialog">✕</button>
       </div>
 
+      <div id="chat-context-banner" class="chat-context-banner" hidden>
+        <span aria-hidden="true">🔍</span>
+        <span id="chat-context-text">Discussing: Tomato Early Blight</span>
+      </div>
+
       <div class="chat-quick-bar">
-        <button class="quick-chip" type="button" data-prompt="How to prepare 1% Bordeaux mixture?" data-i18n="chat_quick_1">
-          1% Bordeaux mixture?
+        <button class="quick-chip" type="button" data-prompt="1% Bordeaux mixture recipe?" data-i18n="chat_quick_1">
+          1% Bordeaux mixture recipe?
         </button>
-        <button class="quick-chip" type="button" data-prompt="What is the difference between Early Blight and Late Blight?" data-i18n="chat_quick_2">
-          Early vs Late Blight?
+        <button class="quick-chip" type="button" data-prompt="Early vs Late Blight difference?" data-i18n="chat_quick_2">
+          Early vs Late Blight difference?
         </button>
-        <button class="quick-chip" type="button" data-prompt="What is the knapsack sprayer dosage for Mancozeb 75 WP?" data-i18n="chat_quick_4">
-          15L pump dosage?
+        <button class="quick-chip" type="button" data-prompt="15L pump dosage for Mancozeb?" data-i18n="chat_quick_4">
+          15L pump dosage for Mancozeb?
         </button>
-        <button class="quick-chip" type="button" data-prompt="Organic spray for tomato whitefly and leaf curl?" data-i18n="chat_quick_3">
+        <button class="quick-chip" type="button" data-prompt="Whitefly organic spray?" data-i18n="chat_quick_3">
           Whitefly organic spray?
         </button>
       </div>
 
       <div id="chat-messages" class="chat-messages-feed">
         <div class="chat-bubble bot-bubble">
-          <span data-i18n="chat_welcome">
-            Namaste! Ask me anything about tomato or potato diseases, organic remedies, Bordeaux mixture, or sprayer dosages.
-          </span>
+          <div class="chat-bubble-body" data-i18n="chat_welcome">
+            Namaste! I am your Kisan AI Agricultural Advisor. Ask me anything about tomato or potato diseases, 1% Bordeaux mixture preparation, blight differentiation, or 15L sprayer pump dosages.
+          </div>
         </div>
       </div>
 
       <form id="chat-form" class="chat-input-footer">
-        <input type="text" id="chat-input" class="chat-field" autofocus placeholder="Ask a tomato or potato question..." data-i18n="chat_placeholder">
+        <input type="text" id="chat-input" class="chat-field" autofocus placeholder="Say hello or ask about tomato/potato diseases, sprays..." data-i18n="chat_placeholder">
         <button id="chat-send" class="btn-primary-glass btn-send" type="submit" data-i18n="chat_send">Send</button>
       </form>
     </div>
@@ -418,8 +423,8 @@
   </footer>
 
   <!-- Client Scripts -->
-  <script src="/static/js/i18n.js?v=7"></script>
-  <script src="/static/js/voice.js?v=7"></script>
-  <script src="/static/js/app.js?v=7"></script>
+  <script src="/static/js/i18n.js?v=8"></script>
+  <script src="/static/js/voice.js?v=8"></script>
+  <script src="/static/js/app.js?v=8"></script>
 </body>
 </html>

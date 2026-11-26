@@ -542,12 +542,6 @@ function renderDiagnosis(data) {
 function initActions() {
     const btnWhatsapp = document.getElementById("btn-whatsapp");
     const btnPrint = document.getElementById("btn-print");
-    const btnNavChat = document.getElementById("btn-nav-chat");
-    const chatDialog = document.getElementById("chat-modal");
-
-    if (btnNavChat && chatDialog) {
-        btnNavChat.addEventListener("click", () => chatDialog.showModal());
-    }
 
     if (btnWhatsapp) {
         btnWhatsapp.addEventListener("click", () => {
@@ -725,8 +719,26 @@ function renderEncyclopediaList() {
 }
 
 /* ---------------- Native Modal Dialog Chat ---------------- */
+function updateChatContextBanner() {
+    const banner = document.getElementById("chat-context-banner");
+    const bannerText = document.getElementById("chat-context-text");
+    if (!banner || !bannerText) return;
+
+    if (currentDiagnosisData && currentDiagnosisData.status === "success" && currentDiagnosisData.prediction?.name) {
+        const pred = currentDiagnosisData.prediction;
+        const name = currentLang === "hi" ? (pred.hindi_name || pred.name) : pred.name;
+        banner.hidden = false;
+        bannerText.textContent = currentLang === "hi"
+            ? `सक्रिय जांच संदर्भ: ${name}`
+            : `Discussing active diagnosis: ${name}`;
+    } else {
+        banner.hidden = true;
+    }
+}
+
 function initChat() {
     const chatBtn = document.getElementById("floating-chat-btn");
+    const btnNavChat = document.getElementById("btn-nav-chat");
     const chatDialog = document.getElementById("chat-modal");
     const chatClose = document.getElementById("chat-close");
     const chatForm = document.getElementById("chat-form");
@@ -734,7 +746,13 @@ function initChat() {
 
     if (!chatDialog) return;
 
-    if (chatBtn) chatBtn.addEventListener("click", () => chatDialog.showModal());
+    const openChatModal = () => {
+        updateChatContextBanner();
+        if (!chatDialog.open) chatDialog.showModal();
+    };
+
+    if (chatBtn) chatBtn.addEventListener("click", openChatModal);
+    if (btnNavChat) btnNavChat.addEventListener("click", openChatModal);
     if (chatClose) chatClose.addEventListener("click", () => chatDialog.close());
 
     const sendMsg = async () => {
@@ -745,7 +763,10 @@ function initChat() {
         appendChatBubble(text, "user");
         chatInput.value = "";
 
-        const diseaseContext = currentDiagnosisData ? currentDiagnosisData.prediction.name : "";
+        const typingId = appendTypingBubble();
+        const diseaseContext = currentDiagnosisData?.status === "success"
+            ? (currentDiagnosisData.prediction?.name || "")
+            : "";
 
         try {
             const res = await fetch("/api/v1/chat", {
@@ -758,8 +779,10 @@ function initChat() {
                 })
             });
             const data = await res.json();
+            removeTypingBubble(typingId);
             appendChatBubble(data.reply, "bot");
         } catch (err) {
+            removeTypingBubble(typingId);
             appendChatBubble(
                 currentLang === "hi"
                     ? "सर्वर से संपर्क नहीं हो सका।"
@@ -805,12 +828,60 @@ function initDialogLightDismissFallback() {
     }
 }
 
+function formatAdvisorMessage(rawText) {
+    return escapeHtml(rawText)
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+        .replace(/\n/g, "<br>");
+}
+
+function appendTypingBubble() {
+    const chatMessages = document.getElementById("chat-messages");
+    if (!chatMessages) return null;
+    const id = `typing-${Date.now()}`;
+    const bubble = document.createElement("div");
+    bubble.id = id;
+    bubble.className = "chat-bubble bot-bubble";
+    bubble.textContent = currentLang === "hi" ? "किसान सलाहकार टाइप कर रहे हैं..." : "Kisan Advisor is typing...";
+    chatMessages.appendChild(bubble);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return id;
+}
+
+function removeTypingBubble(id) {
+    if (!id) return;
+    const el = document.getElementById(id);
+    if (el) el.remove();
+}
+
 function appendChatBubble(text, type) {
     const chatMessages = document.getElementById("chat-messages");
     if (!chatMessages) return;
+
     const bubble = document.createElement("div");
     bubble.className = `chat-bubble ${type === "user" ? "user" : "bot-bubble"}`;
-    bubble.textContent = text;
+
+    if (type === "user") {
+        bubble.textContent = text;
+    } else {
+        const bodyDiv = document.createElement("div");
+        bodyDiv.className = "chat-bubble-body";
+        bodyDiv.innerHTML = formatAdvisorMessage(text);
+        bubble.appendChild(bodyDiv);
+
+        const speakBtn = document.createElement("button");
+        speakBtn.type = "button";
+        speakBtn.className = "chat-speak-btn";
+        speakBtn.textContent = currentLang === "hi" ? "🔊 सुनें" : "🔊 Listen";
+        speakBtn.addEventListener("click", () => {
+            const plain = text.replace(/\*\*/g, "").replace(/\*/g, "");
+            if (typeof speakText === "function") {
+                speakText(plain, currentLang === "hi" ? "hi-IN" : "en-IN");
+            }
+        });
+        bubble.appendChild(speakBtn);
+    }
+
     chatMessages.appendChild(bubble);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
