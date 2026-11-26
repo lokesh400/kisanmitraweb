@@ -315,21 +315,24 @@ class CropDiagnosisEngine {
    */
   balanceRawBuffer(pixels, lighting) {
     const out = Buffer.allocUnsafe(pixels.length);
-    const { rMean, gMean, bMean, p5, p95 } = lighting;
+    const { rMean, gMean, bMean, p5, p95, isLowLight } = lighting;
+    const channelSpread = Math.max(rMean, gMean, bMean) / (Math.min(rMean, gMean, bMean) + 1.0);
+    // Preserve true pigment ratios in dark shade; neutralize only genuine color-cast lighting
+    const applyGrayWorld = !isLowLight && channelSpread > 1.35;
     const gray = (rMean + gMean + bMean) / 3.0;
-    const clampGain = v => Math.max(0.72, Math.min(1.38, v));
-    const rg = clampGain(gray / (rMean || 1));
-    const gg = clampGain(gray / (gMean || 1));
-    const bg = clampGain(gray / (bMean || 1));
+    const clampGain = v => Math.max(0.78, Math.min(1.30, v));
+    const rg = applyGrayWorld ? clampGain(gray / (rMean || 1)) : 1.0;
+    const gg = applyGrayWorld ? clampGain(gray / (gMean || 1)) : 1.0;
+    const bg = applyGrayWorld ? clampGain(gray / (bMean || 1)) : 1.0;
 
     const stretchLow = Math.max(0, p5 - 4);
-    const stretchSpan = Math.max(32, p95 - stretchLow);
+    const stretchSpan = Math.max(24, p95 - stretchLow);
     const scale = 255.0 / stretchSpan;
 
     for (let i = 0; i < pixels.length; i += 3) {
-      const r = ((pixels[i] * rg) - stretchLow) * scale;
-      const g = ((pixels[i + 1] * gg) - stretchLow) * scale;
-      const b = ((pixels[i + 2] * bg) - stretchLow) * scale;
+      const r = ((pixels[i] - stretchLow) * scale) * rg;
+      const g = ((pixels[i + 1] - stretchLow) * scale) * gg;
+      const b = ((pixels[i + 2] - stretchLow) * scale) * bg;
       out[i] = r < 0 ? 0 : r > 255 ? 255 : Math.round(r);
       out[i + 1] = g < 0 ? 0 : g > 255 ? 255 : Math.round(g);
       out[i + 2] = b < 0 ? 0 : b > 255 ? 255 : Math.round(b);
@@ -405,15 +408,17 @@ class CropDiagnosisEngine {
     // Scale C: Flipped view with adaptive Gray-World + luminance stretch if extreme lighting/tint
     let enhancedPipe = sharp(imageBuffer).rotate();
     if (lighting?.isExtremeCondition) {
-      const { rMean, gMean, bMean } = lighting;
-      const gray = (rMean + gMean + bMean) / 3.0;
-      const clampG = v => Math.max(0.75, Math.min(1.35, v));
-      enhancedPipe = enhancedPipe
-        .linear(
+      const { rMean, gMean, bMean, isLowLight } = lighting;
+      const channelSpread = Math.max(rMean, gMean, bMean) / (Math.min(rMean, gMean, bMean) + 1.0);
+      if (!isLowLight && channelSpread > 1.35) {
+        const gray = (rMean + gMean + bMean) / 3.0;
+        const clampG = v => Math.max(0.78, Math.min(1.30, v));
+        enhancedPipe = enhancedPipe.linear(
           [clampG(gray / (rMean || 1)), clampG(gray / (gMean || 1)), clampG(gray / (bMean || 1))],
           [0, 0, 0]
-        )
-        .normalise();
+        );
+      }
+      enhancedPipe = enhancedPipe.normalise();
     }
     const rawEnhFlip = await enhancedPipe
       .flop()
@@ -589,10 +594,10 @@ class CropDiagnosisEngine {
     let { featNorm, rawFeatNorm, baseLogits38 } = mergeAndNormalize(runList);
     let { trainedScores, maxCos } = this.computeTrainedScores(featNorm);
 
-    // 2B. Adaptive Multi-Rotation TTA (90° & 270°) if leaf prediction margin is close/rotated
+    // 2B. Adaptive Multi-Rotation TTA (90° & 270°) if leaf prediction is truly tied/rotated
     const sortedTrainedVals = Object.values(trainedScores).sort((a, b) => b - a);
     const trainedMargin = (sortedTrainedVals[0] ?? 0) - (sortedTrainedVals[1] ?? 0);
-    if (effectiveGreenPct >= 8.0 && (trainedMargin < 1.35 || (sortedTrainedVals[0] ?? 0) < 2.6)) {
+    if (effectiveGreenPct >= 8.0 && (trainedMargin < 0.65 || (sortedTrainedVals[0] ?? 0) < 2.1)) {
       const t90 = this.rgbBufferToFloatTensor(this.rotateRgb224(rawCrop, 90));
       const t270 = this.rgbBufferToFloatTensor(this.rotateRgb224(rawCrop, 270));
       const [out90, out270] = await Promise.all([
@@ -621,9 +626,13 @@ class CropDiagnosisEngine {
     const maxLeafEvidence = Math.max(...Object.values(trainedScores), -10);
     const isGenuineLeaf =
       effectiveGreenPct >= 2.8 &&
-      maxCos >= 0.140 &&
       (rawFeatNorm < 61.5 || pSol >= 0.85) &&
-      ((pSol >= 0.52 && solMax >= 8.5) || (pPM >= 0.55 && pmMax >= 10.0 && effectiveGreenPct >= 14.0));
+      (
+        (pSol >= 0.52 && solMax >= 8.5 && maxCos >= 0.140) ||
+        (pSol >= 0.90 && solMax >= 12.5 && maxCos >= 0.125 && effectiveGreenPct >= 10.0) ||
+        (maxCos >= 0.21 && solMax >= 9.0 && pSol >= 0.25 && effectiveGreenPct >= 15.0) ||
+        (pPM >= 0.55 && pmMax >= 10.0 && maxCos >= 0.140 && effectiveGreenPct >= 14.0)
+      );
 
     // Strict tuber/fruit gate: only accepts authentic tuber/fruit pathology (never human skin)
     const hasTuberOrFruitContrast =
@@ -634,7 +643,7 @@ class CropDiagnosisEngine {
 
     const isGenuineTuberOrFruit =
       effectiveGreenPct < 10.0 &&
-      pSol >= 0.82 &&
+      pSol >= 0.52 &&
       solMax >= 12.0 &&
       rawFeatNorm < 59.5 &&
       hasTuberOrFruitContrast;
